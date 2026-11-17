@@ -55,6 +55,8 @@ Out of scope for the first 4 weeks:
 src/process_sim_lab/      library
   streams.py              Stream: molar flows by component, temperature, pressure
   units/                  one module per unit operation
+  flowsheet.py            flowsheet from a JSON spec; tear streams, successive substitution and Wegstein
+examples/                 flowsheets in JSON
 tests/                    unittest, one file per module
 docs/spec.md              this file
 ```
