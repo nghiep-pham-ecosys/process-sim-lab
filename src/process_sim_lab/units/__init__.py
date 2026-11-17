@@ -9,3 +9,7 @@ from process_sim_lab.units.pfr import PFRResult, isothermal_pfr_first_order  # n
 from process_sim_lab.units.splitter import split_stream  # noqa: E402
 
 __all__ += ["PFRResult", "isothermal_pfr_first_order", "mix_streams", "split_stream"]
+
+from process_sim_lab.units.flash import FlashResult, isothermal_flash  # noqa: E402
+
+__all__ += ["FlashResult", "isothermal_flash"]
