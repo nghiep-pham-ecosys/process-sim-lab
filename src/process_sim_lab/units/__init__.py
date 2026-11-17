@@ -13,3 +13,11 @@ __all__ += ["PFRResult", "isothermal_pfr_first_order", "mix_streams", "split_str
 from process_sim_lab.units.flash import FlashResult, isothermal_flash  # noqa: E402
 
 __all__ += ["FlashResult", "isothermal_flash"]
+
+from process_sim_lab.units.heat_exchanger import (  # noqa: E402
+    HeatExchangerResult,
+    counter_current_area,
+    log_mean_temperature_difference,
+)
+
+__all__ += ["HeatExchangerResult", "counter_current_area", "log_mean_temperature_difference"]
