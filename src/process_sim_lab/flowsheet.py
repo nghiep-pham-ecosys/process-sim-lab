@@ -32,6 +32,11 @@ residual is still above tol after max_iter passes, or when a tear variable is no
 sits above the resolution of the flash's own bisection (1e-12 on psi by default); a much tighter tol can stall on
 that noise.
 
+A tear stream without an "initial" guess starts at zero flow. That suits a tear such as the recycle, whose zero
+first guess still leaves the loop units with the fresh feed. A tear upstream of a unit that needs flow, such as a
+flash fed by the tear directly or through other units, gives that unit an empty feed on the first pass: the pass fails
+with a ValueError that names the unit and the unguessed tear streams. Give such a tear stream an "initial" guess.
+
 JSON form (all numbers in SI units: mol/s, K, Pa, m3, m3/s, 1/s):
 
     {
@@ -195,7 +200,7 @@ class TearSettings:
     Attributes:
         streams: names of the tear streams; empty for a flowsheet without recycle.
         initial: first guess of each tear stream. A tear stream without one starts at zero flow, at the temperature
-            and pressure of the first feed.
+            and pressure of the first feed; a tear that feeds a flash, directly or through other units, needs one.
         method: "wegstein" (default) or "direct".
         tol: tolerance on the scaled residual, > 0.
         max_iter: most passes allowed, >= 1.
@@ -695,9 +700,18 @@ def solve_flowsheet(
     history: list[float] = []
     x_prev: list[float] | None = None
     g_prev: list[float] | None = None
+    unguessed = [s for s in names if s not in t.initial]
     for iteration in range(1, t.max_iter + 1):
         tear_guess = _from_vector(x, names, fs.components)
-        streams, results, computed = _run_pass(fs, tear_guess)
+        try:
+            streams, results, computed = _run_pass(fs, tear_guess)
+        except ValueError as exc:
+            if iteration == 1 and unguessed:
+                raise ValueError(
+                    f"{exc} (first pass, tear streams {unguessed} start at zero flow; give them an initial guess "
+                    "in tear.initial)"
+                ) from exc
+            raise
         gx = _to_vector([computed[s] for s in names], fs.components)
         residual = _scaled_residual(x, gx)
         history.append(residual)

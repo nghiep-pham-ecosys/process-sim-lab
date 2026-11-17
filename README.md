@@ -43,6 +43,9 @@ print(r.overall_balance())               # feeds + generation - products, about 
 The JSON format is described in the docstring of
 [`src/process_sim_lab/flowsheet.py`](src/process_sim_lab/flowsheet.py). Unknown keys are rejected, a loop with no
 tear stream is rejected with the units that form it, and a loop that does not converge raises `ConvergenceError`.
+A tear stream without an `initial` guess starts at zero flow. Tearing `recycle` works that way, but a tear upstream
+of the flash (`reactor-in` or `reactor-out` in the example) needs an `initial` guess in `tear`, or the first pass
+fails because the flash gets an empty feed.
 
 ## Run the tests
 

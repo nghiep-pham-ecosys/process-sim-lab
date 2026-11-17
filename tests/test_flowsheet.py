@@ -183,6 +183,31 @@ class ExampleFlowsheetTest(unittest.TestCase):
                     for c, expected in self.case["recycle"].items():
                         self.assertAlmostEqual(r.streams["recycle"].flows[c], float(expected), delta=VALUE_TOL)
 
+    def test_tear_upstream_of_the_flash_with_initial_guess(self):
+        # Tearing reactor-out closes the same loop; the flash runs first, so the tear needs a guess with flow.
+        guesses = ({"A": 1.0, "I": 1.0, "B": 1.0}, {"A": 5.6, "I": 2.4, "B": 0.0})
+        for flows in guesses:
+            for method in ("direct", "wegstein"):
+                spec = example_spec()
+                spec["tear"] = {
+                    "streams": ["reactor-out"],
+                    "initial": {"reactor-out": {"flows": flows, "temperature": 330.0, "pressure": 2e5}},
+                    "method": method,
+                }
+                with self.subTest(guess=flows, method=method):
+                    fs = Flowsheet.from_dict(spec)
+                    self.assertEqual(fs.order, ("drum", "purge-split", "mixer", "reactor"))
+                    r = solve_flowsheet(fs)
+                    self.assertLessEqual(r.residual, 1e-10)
+                    for stream in ("reactor-in", "reactor-out", "vapour", "liquid", "recycle", "purge"):
+                        for c, expected in self.case[stream].items():
+                            self.assertAlmostEqual(r.streams[stream].flows[c], float(expected), delta=VALUE_TOL)
+                    for c, residual in r.overall_balance().items():
+                        self.assertLessEqual(abs(residual), BALANCE_TOL)
+                    for unit in r.units:
+                        for c, residual in r.unit_balance(unit).items():
+                            self.assertLessEqual(abs(residual), BALANCE_TOL)
+
     def test_result_exports_as_json(self):
         data = json.loads(json.dumps(self.result.to_dict()))
         self.assertEqual(data["name"], "reactor-flash-recycle")
@@ -368,6 +393,19 @@ class SpecErrorTest(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             solve_flowsheet(spec)
         self.assertIn("unit 'mixer' (mixer)", str(ctx.exception))
+
+    def test_tear_upstream_of_the_flash_without_guess_says_so(self):
+        # A zero first guess reaches the flash as an empty feed; the error names the unit and the unguessed tear.
+        for tear in ("reactor-out", "reactor-in"):
+            spec = example_spec()
+            spec["tear"]["streams"] = [tear]
+            with self.subTest(tear=tear):
+                with self.assertRaises(ValueError) as ctx:
+                    solve_flowsheet(spec)
+                message = str(ctx.exception)
+                self.assertIn("unit 'drum' (flash)", message)
+                self.assertIn(f"tear streams [{tear!r}] start at zero flow", message)
+                self.assertIn("tear.initial", message)
 
     def test_param_of_wrong_type_names_the_unit(self):
         spec = example_spec()
