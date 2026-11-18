@@ -1,0 +1,19 @@
+{
+  "id": "antoine-benzene-normal-boiling-point",
+  "description": "Boiling temperature of benzene at 1 atm from the NIST Antoine constants.",
+  "source": "tests/test_antoine.py test_normal_boiling_points_match_nist_within_its_uncertainty: NIST WebBook Tboil of benzene 353.3 K +/- 0.1 K. Tolerance 0.1 K (the NIST uncertainty).",
+  "call": {
+    "name": "antoine_saturation_temperature",
+    "arguments": {
+      "component": "benzene",
+      "pressure": 101325.0
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/saturation_temperature",
+      "value": 353.3,
+      "abs_tol": 0.1
+    }
+  ]
+}

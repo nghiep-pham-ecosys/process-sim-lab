@@ -1,0 +1,23 @@
+{
+  "id": "antoine-benzene-300k",
+  "description": "Vapour pressure of benzene at 300 K from the NIST Antoine constants.",
+  "source": "tests/test_antoine.py test_hand_checked_benzene_value: log10(P/bar) = 4.01814 - 1203.835 / (300 - 53.226) = -0.8601494, P = 0.137991 bar = 13 799 Pa. Tolerance 1 Pa (the test's delta).",
+  "call": {
+    "name": "antoine_vapour_pressure",
+    "arguments": {
+      "component": "benzene",
+      "temperature": 300.0
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/component",
+      "value": "benzene"
+    },
+    {
+      "pointer": "/vapour_pressure",
+      "value": 13799.0,
+      "abs_tol": 1.0
+    }
+  ]
+}

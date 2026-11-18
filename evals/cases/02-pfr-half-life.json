@@ -1,0 +1,50 @@
+{
+  "id": "pfr-half-life",
+  "description": "Isothermal PFR, first-order A -> B, with k tau = ln 2 so half of A reacts.",
+  "source": "tests/test_pfr.py test_half_life_case: k = ln 2 / 100 1/s, V = 1 m3, Q = 0.01 m3/s give tau = 100 s, X = 1 - exp(-ln 2) = 1/2, F_A = F_B = 5 mol/s. Tolerance 1e-12 (the test uses 12 places).",
+  "call": {
+    "name": "pfr",
+    "arguments": {
+      "feed": {
+        "flows": {
+          "A": 10.0,
+          "W": 50.0
+        },
+        "temperature": 330.0,
+        "pressure": 200000.0
+      },
+      "reactant": "A",
+      "product": "B",
+      "rate_constant": 0.006931471805599453,
+      "volume": 1.0,
+      "volumetric_flow": 0.01
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/space_time",
+      "value": 100.0,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/damkohler",
+      "value": 0.6931471805599453,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/conversion",
+      "value": 0.5,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlet/flows/A",
+      "value": 5.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlet/flows/B",
+      "value": 5.0,
+      "abs_tol": 1e-12
+    }
+  ]
+}

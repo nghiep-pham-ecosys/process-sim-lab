@@ -5,7 +5,7 @@ A small lab for chemical process and equipment simulation, built step by step wi
 - **Correct engineering first:** every model states its equations, assumptions and source, and is tested against a
   known answer.
 - **Towards design tools:** sized equipment will be exported as plain parametric JSON that a CAD script can read.
-- **Agent-ready:** every operation will have a JSON schema, so an LLM agent can build and run a flowsheet through tool
+- **Agent-ready:** every operation has a JSON schema, so an LLM agent can build and run a flowsheet through tool
   calls and be checked against fixed cases.
 
 The plan and the 4-week roadmap: [`docs/spec.md`](docs/spec.md).
@@ -46,6 +46,57 @@ tear stream is rejected with the units that form it, and a loop that does not co
 A tear stream without an `initial` guess starts at zero flow. Tearing `recycle` works that way, but a tear upstream
 of the flash (`reactor-in` or `reactor-out` in the example) needs an `initial` guess in `tear`, or the first pass
 fails because the flash gets an empty feed.
+
+## Agent layer
+
+Week 4: every operation is a tool with a JSON schema, so an agent can call the library through tool calls.
+
+| Tool | Operation |
+|---|---|
+| `cstr`, `pfr` | isothermal first-order reactor A → B |
+| `mixer`, `splitter` | mix streams; split one stream by fraction |
+| `flash_drum` | isothermal flash with given K-values (Rachford–Rice) |
+| `heat_exchanger_area` | counter-current exchanger area from the duty and the LMTD |
+| `antoine_vapour_pressure`, `antoine_saturation_temperature` | pure-component Antoine equation (NIST constants) |
+| `solve_flowsheet` | a flowsheet in the week-3 JSON form, recycle included |
+
+The schemas live in [`src/process_sim_lab/agent/schemas.py`](src/process_sim_lab/agent/schemas.py) (JSON Schema
+draft 2020-12, plain dicts, SI units in every description, one example input each). `tool_definitions()` returns
+them as `{"name", "description", "input_schema"}`. `run_tool(name, arguments)` checks the arguments against the
+schema, calls the operation and returns plain JSON. It never raises for a bad call.
+
+A worked tool call, the hand-checked exchanger of `tests/test_heat_exchanger.py`:
+
+```python
+from process_sim_lab.agent.runner import run_tool
+
+run_tool("heat_exchanger_area", {"duty": 5e5, "overall_u": 500.0,               # W, W/(m2 K)
+                                 "hot_in": 423.15, "hot_out": 363.15,           # K
+                                 "cold_in": 303.15, "cold_out": 343.15})        # K
+# {"ok": True, "tool": "heat_exchanger_area",
+#  "result": {"area": 14.384103622589043, "lmtd": 69.52118993564416, "delta_t1": 80.0, "delta_t2": 60.0}}
+```
+
+A bad call comes back as a structured error. Its type is `unknown_tool`, `invalid_input` (with the path of each bad
+field), `model_error` (valid shape, but the model rejects it, such as a temperature cross) or `convergence_error`:
+
+```python
+run_tool("heat_exchanger_area", {..., "overall_u": -500.0})
+# {"ok": False, "tool": "heat_exchanger_area",
+#  "error": {"type": "invalid_input", "message": "$.overall_u: must be > 0, got -500.0",
+#            "issues": [{"path": "$.overall_u", "message": "must be > 0, got -500.0"}]}}
+```
+
+Ten evaluation cases in [`evals/cases/`](evals/cases/) are fixed tool calls with expected results. The values and
+tolerances come from the hand-checked unit tests and the week-3 flowsheet; each case names its source. No LLM is
+called:
+
+```bash
+python3 -m process_sim_lab.agent.evaluate      # PASS/FAIL per case, then "10/10 cases passed"; exit code 1 on a failure
+```
+
+The default case folder is the repository's `evals/cases`, which an editable install (`pip install -e .`) finds. Pass
+`--cases DIR` otherwise.
 
 ## Run the tests
 
