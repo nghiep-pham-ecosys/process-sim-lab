@@ -56,6 +56,9 @@ src/process_sim_lab/      library
   streams.py              Stream: molar flows by component, temperature, pressure
   units/                  one module per unit operation
   flowsheet.py            flowsheet from a JSON spec; tear streams, successive substitution and Wegstein
+  agent/                  agent layer: schemas.py (JSON Schema per tool + validator), runner.py (run_tool),
+                          evaluate.py (python3 -m process_sim_lab.agent.evaluate)
+evals/cases/              evaluation cases: tool call, expected values, tolerances, source test
 examples/                 flowsheets in JSON
 tests/                    unittest, one file per module
 docs/spec.md              this file
