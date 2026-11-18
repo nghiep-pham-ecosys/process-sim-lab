@@ -1,0 +1,38 @@
+{
+  "id": "heat-exchanger-area",
+  "description": "Counter-current exchanger area from the LMTD.",
+  "source": "tests/test_heat_exchanger.py test_hand_checked_area: hot 423.15 -> 363.15 K, cold 303.15 -> 343.15 K give dT1 = 80 K, dT2 = 60 K, LMTD = 20 / ln(4/3) = 69.5211899356 K; Q = 5e5 W, U = 500 W/(m2 K) give A = 14.3841036 m2. Tolerance 1e-6 (the test uses 6 places for LMTD and area).",
+  "call": {
+    "name": "heat_exchanger_area",
+    "arguments": {
+      "duty": 500000.0,
+      "overall_u": 500.0,
+      "hot_in": 423.15,
+      "hot_out": 363.15,
+      "cold_in": 303.15,
+      "cold_out": 343.15
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/delta_t1",
+      "value": 80.0,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/delta_t2",
+      "value": 60.0,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/lmtd",
+      "value": 69.5211899356,
+      "abs_tol": 1e-06
+    },
+    {
+      "pointer": "/area",
+      "value": 14.3841036,
+      "abs_tol": 1e-06
+    }
+  ]
+}

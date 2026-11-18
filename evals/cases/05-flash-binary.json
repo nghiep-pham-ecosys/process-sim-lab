@@ -1,0 +1,61 @@
+{
+  "id": "flash-binary",
+  "description": "Binary isothermal flash, z = (0.4, 0.6), K = (3, 0.2).",
+  "source": "tests/test_flash.py test_unequal_split_matches_closed_form: the binary Rachford-Rice root is psi = -(0.8 - 0.48) / (-1.6) = 0.2, x = (2/7, 5/7), y = (6/7, 1/7), vapour A = 2 * 6/7 mol/s, liquid B = 8 * 5/7 mol/s. Tolerance 1e-9 (the test's TOL).",
+  "call": {
+    "name": "flash_drum",
+    "arguments": {
+      "feed": {
+        "flows": {
+          "A": 4.0,
+          "B": 6.0
+        }
+      },
+      "k_values": {
+        "A": 3.0,
+        "B": 0.2
+      }
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/phase",
+      "value": "two-phase"
+    },
+    {
+      "pointer": "/vapour_fraction",
+      "value": 0.2,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/x/A",
+      "value": 0.2857142857142857,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/x/B",
+      "value": 0.7142857142857143,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/y/A",
+      "value": 0.8571428571428571,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/y/B",
+      "value": 0.14285714285714285,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/vapour/flows/A",
+      "value": 1.7142857142857142,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/liquid/flows/B",
+      "value": 5.714285714285714,
+      "abs_tol": 1e-09
+    }
+  ]
+}
