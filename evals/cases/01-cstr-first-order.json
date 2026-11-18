@@ -1,0 +1,55 @@
+{
+  "id": "cstr-first-order",
+  "description": "Isothermal CSTR, first-order A -> B, conversion X = k tau / (1 + k tau).",
+  "source": "tests/test_cstr.py test_matches_analytic_conversion: k = 0.01 1/s, V = 2 m3, Q = 0.004 m3/s give tau = 500 s, Da = 5, X = 5/6, F_A = 10/6 mol/s, F_B = 50/6 mol/s. Tolerance 1e-12 (the test uses 12 places).",
+  "call": {
+    "name": "cstr",
+    "arguments": {
+      "feed": {
+        "flows": {
+          "A": 10.0,
+          "W": 50.0
+        },
+        "temperature": 330.0,
+        "pressure": 200000.0
+      },
+      "reactant": "A",
+      "product": "B",
+      "rate_constant": 0.01,
+      "volume": 2.0,
+      "volumetric_flow": 0.004
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/space_time",
+      "value": 500.0,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/damkohler",
+      "value": 5.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/conversion",
+      "value": 0.8333333333333334,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlet/flows/A",
+      "value": 1.6666666666666667,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlet/flows/B",
+      "value": 8.333333333333334,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlet/flows/W",
+      "value": 50.0,
+      "abs_tol": 1e-12
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "id": "mixer-hand-sum",
+  "description": "Mixer of two streams at one temperature: flows add up, the lowest pressure wins.",
+  "source": "tests/test_mixer.py test_sums_component_flows: A = 2 + 3 = 5, B = 1, C = 4 mol/s; outlet at the lower inlet pressure 2e5 Pa and the common 300 K. Tolerance 1e-12.",
+  "call": {
+    "name": "mixer",
+    "arguments": {
+      "inlets": [
+        {
+          "flows": {
+            "A": 2.0,
+            "B": 1.0
+          },
+          "temperature": 300.0,
+          "pressure": 300000.0
+        },
+        {
+          "flows": {
+            "A": 3.0,
+            "C": 4.0
+          },
+          "temperature": 300.0,
+          "pressure": 200000.0
+        }
+      ]
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/outlet/flows/A",
+      "value": 5.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlet/flows/B",
+      "value": 1.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlet/flows/C",
+      "value": 4.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlet/temperature",
+      "value": 300.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlet/pressure",
+      "value": 200000.0,
+      "abs_tol": 1e-09
+    }
+  ]
+}

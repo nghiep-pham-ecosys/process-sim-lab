@@ -1,0 +1,49 @@
+{
+  "id": "splitter-purge-recycle",
+  "description": "Splitter with fractions 0.25 and 0.75.",
+  "source": "tests/test_splitter.py test_splits_by_fraction: 0.25 * (6, 4) = (1.5, 1.0) mol/s and 0.75 * (6, 4) = (4.5, 3.0) mol/s. Tolerance 1e-12.",
+  "call": {
+    "name": "splitter",
+    "arguments": {
+      "feed": {
+        "flows": {
+          "A": 6.0,
+          "B": 4.0
+        },
+        "temperature": 320.0,
+        "pressure": 180000.0
+      },
+      "fractions": [
+        0.25,
+        0.75
+      ]
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/outlets/0/flows/A",
+      "value": 1.5,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlets/0/flows/B",
+      "value": 1.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlets/1/flows/A",
+      "value": 4.5,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlets/1/flows/B",
+      "value": 3.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/outlets/1/temperature",
+      "value": 320.0,
+      "abs_tol": 1e-12
+    }
+  ]
+}
