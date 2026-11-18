@@ -1,0 +1,41 @@
+# Weekly lab routine
+
+A cloud routine runs this file every Wednesday at 13:00 (Asia/Ho_Chi_Minh). Its prompt is one line:
+"Read `.claude/routine.md` in process-sim-lab and follow it." The rules live here and change by pull request.
+
+One run = one small issue = one pull request. The run never merges. A local session reviews and merges the PR.
+
+## 1. Stop checks (in this order)
+
+1. A file named `PAUSE` exists at the repo root → stop. Write nothing.
+2. Two or more open pull requests have a head branch that starts with `routine/` → stop. Write nothing.
+3. No open issue has the label `routine` without an open PR that names it → stop. Write nothing.
+
+## 2. Pick one issue
+
+- Only issues labelled `routine`. Among them, an issue also labelled `prio` goes first; otherwise the lowest number.
+- Skip an issue that an open PR already names (`Refs process-sim-lab#<n>`).
+- Read its "Scope" and "Done when". Do only what "Scope: In" says. Something else needed → stop and comment (§5).
+
+## 3. Build
+
+- Branch `routine/<n>-<slug>` from `main` (slug: 2–4 lowercase words from the title).
+- Follow `docs/spec.md` §3: Python 3.12, standard library only, SI units inside, a docstring with the equations, the
+  assumptions and a source for every model, a test against a hand-checked value with a stated tolerance.
+- Tests: `python3 -m pip install -e .` then `python3 -m unittest discover -v -s tests -p 'test_*.py'`. All green
+  before the PR.
+- Synthetic data only. No names of people or companies, no account ids, no secrets, no paid API.
+
+## 4. Pull request
+
+- Commit and PR title: `type: description`, lower case, imperative (`feat`, `fix`, `docs`, `test`, `chore`,
+  `refactor`, `ci`). Body ends with `Refs process-sim-lab#<n>`.
+- Never `Fixes`, `Closes` or `Resolves`: the issue is closed by hand after the change is verified.
+- PR body: what changed, each "Done when" line with its evidence, the last lines of the test run.
+- One PR per run.
+
+## 5. Never
+
+- Merge, push to `main`, force-push, or change `.github/`, this file or `docs/spec.md`.
+- Edit labels, the project board or other issues.
+- When blocked, open no PR. Leave one comment on the issue: what blocks it and what would unblock it.
