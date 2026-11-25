@@ -1,7 +1,7 @@
 {
   "id": "flowsheet-reactor-flash-recycle",
   "description": "The week-3 flowsheet: CSTR, flash drum and a purged vapour recycle, solved with Wegstein.",
-  "source": "tests/test_flowsheet.py constructed_case and ExampleFlowsheetTest: reactor outlet (2, 3, 5), vapour (5/4, 3/4, 1/2), liquid (3/4, 9/4, 9/2), recycle (1, 3/5, 2/5), purge (1/4, 3/20, 1/10) mol/s for (A, I, B). Tolerance 1e-8 mol/s on flows (the test's VALUE_TOL, tear tol 1e-10) and 1e-6 mol/s on the overall balance (the test's BALANCE_TOL). Arguments equal examples/reactor_flash_recycle.json.",
+  "source": "tests/test_flowsheet.py constructed_case and ExampleFlowsheetTest: reactor outlet (2, 3, 5), vapour (5/4, 3/4, 1/2), liquid (3/4, 9/4, 9/2), recycle (1, 3/5, 2/5), purge (1/4, 3/20, 1/10) mol/s for (A, I, B). Tolerance 1e-8 mol/s on flows (the test's VALUE_TOL, tear tol 1e-10) and 1e-6 mol/s on the overall balance (the test's BALANCE_TOL). Sizing: reactor volume 2 m3 and space time V / Q = 100 s; drum diameter 0.2058451 m and height 0.8233803 m from tests/test_flash_drum_sizing.py HandCheckedDrumTest (the converged vapour), tolerance 1e-6 m. Arguments equal examples/reactor_flash_recycle.json.",
   "call": {
     "name": "solve_flowsheet",
     "arguments": {
@@ -60,7 +60,15 @@
               "A": 5.0,
               "I": 1.0,
               "B": 0.3333333333333333
-            }
+            },
+            "molar_masses": {
+              "A": 0.06,
+              "I": 0.028,
+              "B": 0.06
+            },
+            "liquid_density": 800.0,
+            "souders_brown_k": 0.07,
+            "height_to_diameter": 4.0
           }
         },
         {
@@ -165,6 +173,26 @@
     {
       "pointer": "/overall_balance/B",
       "value": 0.0,
+      "abs_tol": 1e-06
+    },
+    {
+      "pointer": "/units/reactor/sizing/volume",
+      "value": 2.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/units/reactor/sizing/space_time",
+      "value": 100.0,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/units/drum/sizing/diameter",
+      "value": 0.205845063,
+      "abs_tol": 1e-06
+    },
+    {
+      "pointer": "/units/drum/sizing/height",
+      "value": 0.823380252,
       "abs_tol": 1e-06
     }
   ]

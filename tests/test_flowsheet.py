@@ -24,6 +24,7 @@ from pathlib import Path
 
 from process_sim_lab import Stream
 from process_sim_lab.flowsheet import (
+    SIZING_FIELDS,
     ConvergenceError,
     Flowsheet,
     FlowsheetResult,
@@ -31,6 +32,7 @@ from process_sim_lab.flowsheet import (
     _wegstein_step,
     solve_flowsheet,
 )
+from process_sim_lab.units import shortcut_column, size_vertical_flash_drum
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "reactor_flash_recycle.json"
 BALANCE_TOL = 1e-6  # the issue asks mass balances to close within 1e-6
@@ -424,6 +426,181 @@ class SpecErrorTest(unittest.TestCase):
         self.assertEqual(r.streams["a"].flows, {"A": 1.5, "B": 1.0})
         with self.assertRaises(ValueError):
             Flowsheet.build(feeds={"feed": Stream(flows={"A": 1.0})}, units=[])
+
+
+# A process stream of 4 mol/s A and 6 mol/s W with cp = 100 and 75 J/(mol K): F cp = 850 W/K.
+EXCHANGER_FEED = {"flows": {"A": 4.0, "W": 6.0}, "temperature": 400.0, "pressure": 3e5}
+EXCHANGER_CP = {"A": 100.0, "W": 75.0}
+
+# The shortcut_column tool example (tests/test_shortcut_column.py, Wankat Examples 7-1 and 7-2, R = 2.0).
+COLUMN_FEED = {"flows": {"benzene": 40.0, "toluene": 30.0, "cumene": 30.0}, "temperature": 360.0, "pressure": 101325.0}
+COLUMN_PARAMS = {"relative_volatilities": {"benzene": 2.25, "toluene": 1.0, "cumene": 0.21}, "light_key": "toluene",
+                 "heavy_key": "cumene", "light_key_recovery": 0.95, "heavy_key_recovery": 0.98, "q": 0.0,
+                 "reflux_ratio": 2.0}
+
+
+def exchanger_spec(outlet_temperature, utility_in, utility_out, overall_u):
+    return {
+        "feeds": {"feed": EXCHANGER_FEED},
+        "units": [
+            {"name": "hx", "type": "heat_exchanger", "inlets": ["feed"], "outlets": ["out"],
+             "params": {"temperature": outlet_temperature, "heat_capacities": EXCHANGER_CP, "overall_u": overall_u,
+                        "utility_in": utility_in, "utility_out": utility_out}},
+        ],
+    }
+
+
+class SizingTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.result = solve_flowsheet(example_spec())
+
+    def test_every_unit_reports_the_fields_of_its_type_in_order(self):
+        for name, u in self.result.units.items():
+            with self.subTest(unit=name):
+                self.assertEqual(tuple(u.sizing), SIZING_FIELDS[u.type])
+
+    def test_reactor_volume_and_space_time(self):
+        # V = 2 m3, Q = 0.02 m3/s: tau = 100 s.
+        self.assertEqual(self.result.units["reactor"].sizing, {"volume": 2.0, "space_time": 100.0})
+
+    def test_mixer_and_splitter_have_nothing_to_size(self):
+        self.assertEqual(self.result.units["mixer"].sizing, {})
+        self.assertEqual(self.result.units["purge-split"].sizing, {})
+
+    def test_drum_is_sized_from_the_converged_vapour(self):
+        # The hand-checked drum of tests/test_flash_drum_sizing.py: vapour (5/4, 3/4, 1/2) mol/s at 330 K, 2 bar.
+        sizing = self.result.units["drum"].sizing
+        self.assertAlmostEqual(sizing["diameter"], 0.2058450630, delta=1e-9)
+        self.assertAlmostEqual(sizing["height"], 0.8233802520, delta=1e-9)
+        self.assertAlmostEqual(sizing["volume"], 0.0274013045, delta=1e-9)
+        self.assertEqual(sizing["height_to_diameter"], 4.0)
+        params = example_spec()["units"][2]["params"]
+        del params["k_values"]
+        size = size_vertical_flash_drum(self.result.streams["vapour"], **params)
+        self.assertEqual(sizing["diameter"], size.diameter)
+        self.assertEqual(sizing["max_vapour_velocity"], size.max_vapour_velocity)
+
+    def test_flash_without_sizing_params_is_not_sized(self):
+        spec = example_spec()
+        spec["units"][2]["params"] = {"k_values": spec["units"][2]["params"]["k_values"]}
+        r = solve_flowsheet(spec)
+        self.assertEqual(r.units["drum"].sizing, {})
+        self.assertEqual(r.units["reactor"].sizing, self.result.units["reactor"].sizing)
+
+    def test_flash_with_some_sizing_params_is_rejected(self):
+        spec = example_spec()
+        del spec["units"][2]["params"]["souders_brown_k"]
+        with self.assertRaises(ValueError) as ctx:
+            Flowsheet.from_dict(spec)
+        self.assertIn("unit 'drum' (flash): drum sizing needs all of", str(ctx.exception))
+        self.assertIn("missing ['souders_brown_k']", str(ctx.exception))
+
+    def test_drum_without_vapour_cannot_be_sized(self):
+        spec = example_spec()
+        spec["units"][2]["params"]["k_values"] = {"A": 0.5, "I": 0.5, "B": 0.5}  # all liquid
+        with self.assertRaises(ValueError) as ctx:
+            solve_flowsheet(spec)
+        self.assertIn("unit 'drum' (flash) cannot be sized", str(ctx.exception))
+        self.assertIn("vapour has no flow", str(ctx.exception))
+
+
+class HeatExchangerUnitTest(unittest.TestCase):
+    def test_cooler_hand_checked(self):
+        # Process 400 -> 340 K against water 300 -> 320 K: Q = 850 * 60 = 51 000 W; dT1 = 400 - 320 = 80 K,
+        # dT2 = 340 - 300 = 40 K, LMTD = 40 / ln 2 = 57.7078016 K; A = 51 000 / (500 * 57.7078016) = 1.7675253 m2.
+        r = solve_flowsheet(exchanger_spec(340.0, 300.0, 320.0, 500.0))
+        out = r.streams["out"]
+        self.assertEqual((out.flows, out.temperature, out.pressure), ({"A": 4.0, "W": 6.0}, 340.0, 3e5))
+        sizing = r.units["hx"].sizing
+        self.assertEqual(tuple(sizing), ("duty", "area", "lmtd"))
+        self.assertAlmostEqual(sizing["duty"], 51000.0, places=9)
+        self.assertAlmostEqual(sizing["lmtd"], 40.0 / math.log(2.0), places=9)
+        self.assertAlmostEqual(sizing["area"], 1.7675253104, places=9)
+        self.assertEqual(r.units["hx"].generation, {})
+
+    def test_heater_hand_checked(self):
+        # Process 400 -> 450 K against oil 550 -> 500 K: Q = 850 * 50 = 42 500 W; dT1 = 550 - 450 = 100 K,
+        # dT2 = 500 - 400 = 100 K, LMTD = 100 K (equal ends); A = 42 500 / (250 * 100) = 1.7 m2.
+        sizing = solve_flowsheet(exchanger_spec(450.0, 550.0, 500.0, 250.0)).units["hx"].sizing
+        self.assertAlmostEqual(sizing["duty"], 42500.0, places=9)
+        self.assertEqual(sizing["lmtd"], 100.0)
+        self.assertAlmostEqual(sizing["area"], 1.7, places=12)
+
+    def test_exchanger_that_cannot_be_sized_names_the_unit(self):
+        cases = (
+            ((340.0, 300.0, 410.0, 500.0), "temperature cross"),  # water leaves at 410 K, above the process inlet
+            ((400.0, 300.0, 320.0, 500.0), "duty must be > 0"),  # no temperature change
+            ((340.0, 320.0, 300.0, 500.0), "cold side must heat"),  # a cooling utility that cools down
+        )
+        for args, fragment in cases:
+            with self.subTest(args=args), self.assertRaises(ValueError) as ctx:
+                solve_flowsheet(exchanger_spec(*args))
+            self.assertIn("unit 'hx' (heat_exchanger) cannot be sized", str(ctx.exception))
+            self.assertIn(fragment, str(ctx.exception))
+
+    def test_non_finite_params_name_the_unit(self):
+        for key in ("temperature", "overall_u", "utility_in", "utility_out"):
+            for bad in (math.nan, math.inf):
+                spec = exchanger_spec(340.0, 300.0, 320.0, 500.0)
+                spec["units"][0]["params"][key] = bad
+                with self.subTest(key=key, bad=bad), self.assertRaises(ValueError) as ctx:
+                    solve_flowsheet(spec)
+                self.assertIn("unit 'hx' (heat_exchanger)", str(ctx.exception))
+
+    def test_missing_heat_capacity(self):
+        spec = exchanger_spec(340.0, 300.0, 320.0, 500.0)
+        spec["units"][0]["params"]["heat_capacities"] = {"A": 100.0}
+        with self.assertRaisesRegex(ValueError, "no heat capacity for component 'W'"):
+            solve_flowsheet(spec)
+
+    def test_needs_every_param(self):
+        spec = exchanger_spec(340.0, 300.0, 320.0, 500.0)
+        del spec["units"][0]["params"]["overall_u"]
+        with self.assertRaisesRegex(ValueError, r"missing params \['overall_u'\]"):
+            Flowsheet.from_dict(spec)
+
+
+class ShortcutColumnUnitTest(unittest.TestCase):
+    def setUp(self):
+        self.spec = {
+            "feeds": {"feed": COLUMN_FEED},
+            "units": [{"name": "column", "type": "shortcut_column", "inlets": ["feed"],
+                       "outlets": ["distillate", "bottoms"], "params": dict(COLUMN_PARAMS)}],
+        }
+
+    def test_matches_the_unit_model(self):
+        r = solve_flowsheet(self.spec)
+        direct = shortcut_column(Stream(**COLUMN_FEED), **COLUMN_PARAMS)
+        self.assertEqual(r.streams["distillate"], direct.distillate)
+        self.assertEqual(r.streams["bottoms"], direct.bottoms)
+        self.assertEqual(r.products, ("distillate", "bottoms"))
+        self.assertEqual(r.units["column"].sizing, {
+            "minimum_stages": direct.minimum_stages,
+            "stages": direct.stages,
+            "minimum_reflux": direct.minimum_reflux,
+            "reflux_ratio": 2.0,
+        })
+        for c, residual in r.overall_balance().items():
+            with self.subTest(component=c):
+                self.assertLessEqual(abs(residual), 1e-9)
+
+    def test_reflux_factor(self):
+        self.spec["units"][0]["params"].pop("reflux_ratio")
+        self.spec["units"][0]["params"]["reflux_factor"] = 1.5
+        sizing = solve_flowsheet(self.spec).units["column"].sizing
+        self.assertAlmostEqual(sizing["reflux_ratio"], 1.5 * sizing["minimum_reflux"], places=12)
+
+    def test_needs_two_outlets(self):
+        self.spec["units"][0]["outlets"] = ["distillate"]
+        with self.assertRaisesRegex(ValueError, "needs 2 outlets, got 1"):
+            Flowsheet.from_dict(self.spec)
+
+    def test_model_error_names_the_unit(self):
+        self.spec["units"][0]["params"]["light_key"] = "benzene"  # toluene would lie between the keys
+        with self.assertRaises(ValueError) as ctx:
+            solve_flowsheet(self.spec)
+        self.assertIn("unit 'column' (shortcut_column)", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -95,7 +95,8 @@
       "outlets": [
         "reactor-in"
       ],
-      "generation": {}
+      "generation": {},
+      "sizing": {}
     },
     "reactor": {
       "type": "cstr",
@@ -108,6 +109,10 @@
       "generation": {
         "A": -4.6000000000002235,
         "B": 4.6000000000002235
+      },
+      "sizing": {
+        "volume": 2.0,
+        "space_time": 100.0
       }
     },
     "drum": {
@@ -119,7 +124,16 @@
         "vapour",
         "liquid"
       ],
-      "generation": {}
+      "generation": {},
+      "sizing": {
+        "diameter": 0.20584506300129932,
+        "height": 0.8233802520051973,
+        "volume": 0.02740130448602101,
+        "height_to_diameter": 4.0,
+        "vapour_density": 3.673773754032588,
+        "vapour_volumetric_flow": 0.03429715829983586,
+        "max_vapour_velocity": 1.0305933740631816
+      }
     },
     "purge-split": {
       "type": "splitter",
@@ -130,7 +144,8 @@
         "purge",
         "recycle"
       ],
-      "generation": {}
+      "generation": {},
+      "sizing": {}
     }
   },
   "overall_balance": {

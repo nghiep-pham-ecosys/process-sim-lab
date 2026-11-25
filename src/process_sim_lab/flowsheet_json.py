@@ -13,9 +13,20 @@ the tool schemas (``process_sim_lab.agent.schemas``), so any draft 2020-12 valid
       "history": [0.897, 0.0924, 1.44e-12], scaled residual of every pass, one per iteration
       "feeds": ["feed"], "products": ["liquid", "purge"], "components": ["A", "I", "B"],
       "streams": {"recycle": {"flows": {"A": 1.0, ...}, "temperature": 330.0, "pressure": 200000.0}, ...},
-      "units": {"reactor": {"type": "cstr", "inlets": [...], "outlets": [...], "generation": {"A": -4.6, ...}}, ...},
+      "units": {"reactor": {"type": "cstr", "inlets": [...], "outlets": [...], "generation": {"A": -4.6, ...},
+                            "sizing": {"volume": 2.0, "space_time": 100.0}}, ...},
       "overall_balance": {"A": 0.0, ...}    feeds + generation - products, mol/s
     }
+
+Each unit carries a "sizing" object: the plain parametric data a design or CAD script reads. Its fields depend on the
+unit type (``process_sim_lab.flowsheet.SIZING_FIELDS``; the models are in that module's docstring):
+
+    cstr, pfr        volume (m3), space_time (s)
+    flash            diameter, height (m), volume (m3), height_to_diameter, vapour_density (kg/m3),
+                     vapour_volumetric_flow (m3/s), max_vapour_velocity (m/s); {} when the spec gives no sizing params
+    heat_exchanger   duty (W), area (m2), lmtd (K)
+    shortcut_column  minimum_stages, stages, minimum_reflux, reflux_ratio (dimensionless)
+    mixer, splitter  {}
 
 A schema keyword cannot say that a name refers to another part of the document, so ``check_result`` adds these
 checks after the schema passes:
@@ -25,6 +36,7 @@ checks after the schema passes:
     components   every component in "flows" and "generation" is listed in "components"; "overall_balance" has one
                  entry per component
     convergence  len(history) == iterations, history[-1] == residual and residual <= tol
+    sizing       each unit's "sizing" has exactly the fields of its type, or none for a flash
 
 Command line (exit code 0 on success; 1 on a bad spec, a unit or convergence error, or an invalid result; 2 on bad
 command-line arguments):
@@ -37,7 +49,8 @@ command-line arguments):
 ``RESULT_SCHEMA`` and writes it (to stdout without ``-o``). ``check`` validates a result file. ``schema`` prints
 ``RESULT_SCHEMA``.
 
-Units: mol/s for flows, generation and balances; K; Pa. The residual and tol are dimensionless.
+Units: mol/s for flows, generation and balances; K; Pa; sizing in m, m2, m3, s, W, kg/m3, m3/s and m/s as listed
+above. The residual, tol and the column numbers are dimensionless.
 """
 
 from __future__ import annotations
@@ -50,7 +63,7 @@ from pathlib import Path
 from typing import Any
 
 from process_sim_lab.agent.schemas import DRAFT, SchemaIssue, _child, validate, validate_arguments
-from process_sim_lab.flowsheet import METHODS, UNIT_TYPES, ConvergenceError, solve_flowsheet
+from process_sim_lab.flowsheet import METHODS, SIZING_FIELDS, UNIT_TYPES, ConvergenceError, solve_flowsheet
 
 
 def _names(description: str, *, min_items: int = 0) -> dict[str, Any]:
@@ -83,13 +96,48 @@ _STREAM = _object(
     },
 )
 
+def _size(description: str, **bounds: float) -> dict[str, Any]:
+    return {"type": "number", "description": description, **bounds}
+
+
+# Every sizing field of every unit type; check_result checks which ones a unit of each type carries.
+_SIZING_PROPERTIES: dict[str, Any] = {
+    "volume": _size("cstr, pfr: reactor volume; flash: drum cylinder volume, heads left out; m3, > 0",
+                    exclusiveMinimum=0),
+    "space_time": _size("cstr, pfr: space time V / Q, s, > 0", exclusiveMinimum=0),
+    "diameter": _size("flash: drum inside diameter, m, > 0", exclusiveMinimum=0),
+    "height": _size("flash: drum height, tangent to tangent, m, > 0", exclusiveMinimum=0),
+    "height_to_diameter": _size("flash: drum H / D, dimensionless, > 0", exclusiveMinimum=0),
+    "vapour_density": _size("flash: vapour density, ideal gas, kg/m3, > 0", exclusiveMinimum=0),
+    "vapour_volumetric_flow": _size("flash: vapour volumetric flow, m3/s, > 0", exclusiveMinimum=0),
+    "max_vapour_velocity": _size("flash: allowed vapour velocity (Souders-Brown), m/s, > 0", exclusiveMinimum=0),
+    "duty": _size("heat_exchanger: heat duty, W, > 0", exclusiveMinimum=0),
+    "area": _size("heat_exchanger: counter-current heat-transfer area, m2, > 0", exclusiveMinimum=0),
+    "lmtd": _size("heat_exchanger: log mean temperature difference, K, > 0", exclusiveMinimum=0),
+    "minimum_stages": _size("shortcut_column: Fenske minimum stages, dimensionless, > 0", exclusiveMinimum=0),
+    "stages": _size("shortcut_column: Gilliland equilibrium stages incl. the partial reboiler, not rounded, "
+                    "dimensionless, > 0", exclusiveMinimum=0),
+    "minimum_reflux": _size("shortcut_column: Underwood minimum reflux ratio, dimensionless, > 0",
+                            exclusiveMinimum=0),
+    "reflux_ratio": _size("shortcut_column: operating reflux ratio L / D, dimensionless, > 0", exclusiveMinimum=0),
+}
+
 _UNIT = _object(
     "result of one unit operation",
     {
         "type": {"type": "string", "enum": sorted(UNIT_TYPES), "description": "unit type"},
         "inlets": _names("inlet stream names, in order", min_items=1),
-        "outlets": _names("outlet stream names, in order (flash: vapour then liquid)", min_items=1),
+        "outlets": _names("outlet stream names, in order (flash: vapour then liquid; shortcut_column: distillate "
+                          "then bottoms)", min_items=1),
         "generation": _by_component("net generation by component, mol/s; < 0 for a reactant, absent when zero"),
+        "sizing": {
+            "type": "object",
+            "description": "equipment size, SI units; the fields depend on the unit type (none for a mixer or a "
+            "splitter, or for a flash without sizing params)",
+            "properties": _SIZING_PROPERTIES,
+            "required": [],
+            "additionalProperties": False,
+        },
     },
 )
 
@@ -154,6 +202,10 @@ def check_result(data: Any) -> list[SchemaIssue]:
         for c in u["generation"]:
             if c not in components:
                 issues.append(SchemaIssue(f"{where}.generation", f"component {c!r} is not in $.components"))
+        fields = SIZING_FIELDS[u["type"]]
+        if set(u["sizing"]) != set(fields) and not (u["type"] == "flash" and not u["sizing"]):
+            expected = f"{list(fields)}" + (" or none" if u["type"] == "flash" else "")
+            issues.append(SchemaIssue(f"{where}.sizing", f"a {u['type']} must have the fields {expected}"))
     for name, s in streams.items():
         where = _child("$.streams", name)
         if name not in data["feeds"] and name not in produced:

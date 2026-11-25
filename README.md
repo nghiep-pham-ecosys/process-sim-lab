@@ -4,7 +4,8 @@ A small lab for chemical process and equipment simulation, built step by step wi
 
 - **Correct engineering first:** every model states its equations, assumptions and source, and is tested against a
   known answer.
-- **Towards design tools:** sized equipment will be exported as plain parametric JSON that a CAD script can read.
+- **Towards design tools:** sized equipment is exported as plain parametric JSON (the `sizing` of each unit in a
+  solved flowsheet) that a CAD script can read.
 - **Agent-ready:** every operation has a JSON schema, so an LLM agent can build and run a flowsheet through tool
   calls and be checked against fixed cases.
 
@@ -58,7 +59,14 @@ python3 -m process_sim_lab.flowsheet_json check result.json      # result.json: 
 python3 -m process_sim_lab.flowsheet_json schema                 # prints RESULT_SCHEMA
 ```
 
-The hand derivation, the direct-substitution and Wegstein runs side by side, and the schema check are in
+Each unit in the result carries a `sizing` object, the equipment size in SI units, computed once from the converged
+streams: reactor volume and space time; vertical flash drum diameter, height and volume (Souders–Brown, when the
+flash has the four sizing params `molar_masses`, `liquid_density`, `souders_brown_k`, `height_to_diameter`); and for
+the `heat_exchanger` and `shortcut_column` unit types, the exchanger duty, area and LMTD, and the column stages and
+reflux. Mixers and splitters have nothing to size (`{}`). In the example, the drum comes out at D = 0.206 m and
+H = 0.823 m.
+
+The hand derivation, the direct-substitution and Wegstein runs side by side, the sizing and the schema check are in
 [`docs/flowsheet-worked-example.md`](docs/flowsheet-worked-example.md).
 
 ## Agent layer
@@ -73,7 +81,7 @@ Week 4: every operation is a tool with a JSON schema, so an agent can call the l
 | `shortcut_column` | distillation column by Fenske–Underwood–Gilliland: minimum stages, minimum reflux, actual stages |
 | `heat_exchanger_area` | counter-current exchanger area from the duty and the LMTD |
 | `antoine_vapour_pressure`, `antoine_saturation_temperature` | pure-component Antoine equation (NIST constants) |
-| `solve_flowsheet` | a flowsheet in the week-3 JSON form, recycle included |
+| `solve_flowsheet` | a flowsheet in the week-3 JSON form, recycle included; returns the streams and each unit's sizing |
 
 The schemas live in [`src/process_sim_lab/agent/schemas.py`](src/process_sim_lab/agent/schemas.py) (JSON Schema
 draft 2020-12, plain dicts, SI units in every description, one example input each). `tool_definitions()` returns

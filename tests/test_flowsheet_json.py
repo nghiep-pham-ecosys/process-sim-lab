@@ -42,6 +42,23 @@ NO_RECYCLE = {
 }
 
 
+# A cooler feeding a shortcut column: the exchanger and column sizing fields in one result (no recycle).
+COOLER_COLUMN = {
+    "name": "cooler-then-column",
+    "feeds": {"feed": {"flows": {"benzene": 40.0, "toluene": 30.0, "cumene": 30.0}, "temperature": 420.0,
+                       "pressure": 101325.0}},
+    "units": [
+        {"name": "cooler", "type": "heat_exchanger", "inlets": ["feed"], "outlets": ["column-in"],
+         "params": {"temperature": 380.0, "heat_capacities": {"benzene": 140.0, "toluene": 160.0, "cumene": 220.0},
+                    "overall_u": 400.0, "utility_in": 300.0, "utility_out": 330.0}},
+        {"name": "column", "type": "shortcut_column", "inlets": ["column-in"], "outlets": ["distillate", "bottoms"],
+         "params": {"relative_volatilities": {"benzene": 2.25, "toluene": 1.0, "cumene": 0.21},
+                    "light_key": "toluene", "heavy_key": "cumene", "light_key_recovery": 0.95,
+                    "heavy_key_recovery": 0.98, "q": 0.0, "reflux_ratio": 2.0}},
+    ],
+}
+
+
 def example_spec():
     return json.loads(EXAMPLE.read_text(encoding="utf-8"))
 
@@ -92,7 +109,8 @@ class SchemaShapeTest(unittest.TestCase):
         self.assertEqual(RESULT_SCHEMA["$schema"], "https://json-schema.org/draft/2020-12/schema")
 
     def test_every_number_states_a_unit_or_is_dimensionless(self):
-        units = ("mol/s", " K", "Pa", "dimensionless", "count")
+        units = ("mol/s", " K", "Pa", "dimensionless", "count",
+                 " m,", " m2,", " m3,", " s,", " W,", " kg/m3,", " m3/s,", " m/s,")
         for path, schema in walk(RESULT_SCHEMA):
             if schema.get("type") in ("number", "integer") and "description" in schema:
                 with self.subTest(path=path):
@@ -155,6 +173,22 @@ class ExampleResultTest(unittest.TestCase):
         self.assertEqual(messages(check_result(r)), [])
         self.assertEqual((r["iterations"], r["residual"], r["history"]), (1, 0.0, [0.0]))
         self.assertEqual(r["products"], ["out"])
+
+    def test_committed_result_carries_the_sizing(self):
+        units = self.committed["units"]
+        self.assertEqual(units["reactor"]["sizing"], {"volume": 2.0, "space_time": 100.0})
+        self.assertAlmostEqual(units["drum"]["sizing"]["diameter"], 0.2058450630, delta=1e-9)  # test_flash_drum_sizing
+        self.assertAlmostEqual(units["drum"]["sizing"]["height"], 0.8233802520, delta=1e-9)
+        self.assertEqual((units["mixer"]["sizing"], units["purge-split"]["sizing"]), ({}, {}))
+
+    def test_exchanger_and_column_result_validates(self):
+        r = json.loads(dumps(solve_flowsheet(COOLER_COLUMN).to_dict()))
+        self.assertEqual(messages(check_result(r)), [])
+        self.assertEqual(list(r["units"]["cooler"]["sizing"]), ["duty", "area", "lmtd"])
+        self.assertEqual(list(r["units"]["column"]["sizing"]),
+                         ["minimum_stages", "stages", "minimum_reflux", "reflux_ratio"])
+        # Q = (40 * 140 + 30 * 160 + 30 * 220) * (420 - 380) = 17 000 * 40 = 680 000 W.
+        self.assertAlmostEqual(r["units"]["cooler"]["sizing"]["duty"], 680000.0, places=6)
 
     def test_tool_result_validates(self):
         out = run_tool("solve_flowsheet", example_spec())
@@ -232,6 +266,32 @@ class BadResultTest(unittest.TestCase):
     def test_residual_is_the_last_history_entry(self):
         self.r["residual"] = 0.0
         self.assertIssue("$.residual", "last history entry")
+
+    def test_sizing_missing_a_field(self):
+        del self.r["units"]["reactor"]["sizing"]["space_time"]
+        self.assertIssue("$.units.reactor.sizing", "a cstr must have the fields ['volume', 'space_time']")
+
+    def test_sizing_field_of_another_type(self):
+        self.r["units"]["mixer"]["sizing"]["area"] = 1.0
+        self.assertIssue("$.units.mixer.sizing", "a mixer must have the fields []")
+
+    def test_unknown_sizing_field(self):
+        self.r["units"]["drum"]["sizing"]["weight"] = 1.0
+        self.assertIssue("$.units.drum.sizing.weight", "unknown field")
+
+    def test_flash_sizing_is_all_or_none(self):
+        self.r["units"]["drum"]["sizing"] = {}
+        self.assertEqual(messages(check_result(self.r)), [])
+        self.r["units"]["drum"]["sizing"] = {"diameter": 0.2}
+        self.assertIssue("$.units.drum.sizing", "or none")
+
+    def test_sizing_must_be_positive(self):
+        self.r["units"]["drum"]["sizing"]["diameter"] = 0.0
+        self.assertIssue("$.units.drum.sizing.diameter", "must be > 0")
+        for name, schema in RESULT_SCHEMA["properties"]["units"]["additionalProperties"]["properties"]["sizing"][
+                "properties"].items():
+            with self.subTest(field=name):
+                self.assertEqual(schema.get("exclusiveMinimum"), 0)
 
     def test_residual_above_tol(self):
         self.r["tol"] = 1e-14
