@@ -54,14 +54,18 @@ Out of scope for the first 4 weeks:
 ```
 src/process_sim_lab/      library
   streams.py              Stream: molar flows by component, temperature, pressure
-  units/                  one module per unit operation
-  flowsheet.py            flowsheet from a JSON spec; tear streams, successive substitution and Wegstein
+  antoine.py              Antoine vapour pressure with NIST constants
+  units/                  one module per unit operation, plus flash_drum_sizing.py (vertical drum, Souders-Brown)
+  flowsheet.py            flowsheet from a JSON spec; tear streams, successive substitution and Wegstein; unit sizing
+  flowsheet_json.py       RESULT_SCHEMA of a solved flowsheet (streams, units with sizing, convergence), check_result,
+                          command line (python3 -m process_sim_lab.flowsheet_json solve|check|schema)
   agent/                  agent layer: schemas.py (JSON Schema per tool + validator), runner.py (run_tool),
                           evaluate.py (python3 -m process_sim_lab.agent.evaluate)
 evals/cases/              evaluation cases: tool call, expected values, tolerances, source test
-examples/                 flowsheets in JSON
+examples/                 flowsheets in JSON and their solved results (*.result.json)
 tests/                    unittest, one file per module
 docs/spec.md              this file
+docs/flowsheet-worked-example.md   the week-3 example by hand and with the library: solve, size, check the JSON
 ```
 
 ## 6. How work is checked

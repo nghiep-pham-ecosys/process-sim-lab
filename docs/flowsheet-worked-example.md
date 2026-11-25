@@ -1,7 +1,7 @@
 # Worked example: a reactor, a flash drum and a purged recycle
 
-This page solves the week-3 example flowsheet by hand, then with the library, and checks the JSON output against its
-schema. Every number below comes from the hand derivation or from a run of the commands shown.
+This page solves the week-3 example flowsheet by hand, then with the library, sizes its equipment, and checks the JSON
+output against its schema. Every number below comes from the hand derivation or from a run of the commands shown.
 
 Files:
 
@@ -27,7 +27,7 @@ feed ──► mixer ──reactor-in──► reactor ──reactor-out──�
 |---|---|---|
 | `mixer` | mixer | feed A = 5.6, I = 2.4 |
 | `reactor` | CSTR, A → B, first order | k = 0.023 1/s, V = 2 m3, Q = 0.02 m3/s, so τ = V / Q = 100 s and Da = kτ = 2.3 |
-| `drum` | isothermal flash | K = (5, 1, 1/3) for (A, I, B) |
+| `drum` | isothermal flash | K = (5, 1, 1/3) for (A, I, B); sizing data (illustrative): M = (60, 28, 60) g/mol, liquid 800 kg/m3, K_SB = 0.07 m/s, H / D = 4 |
 | `purge-split` | splitter | 20 % of the vapour to purge, 80 % to recycle |
 
 The recycle closes a loop: `mixer` needs `recycle`, which comes out of the last unit. The spec breaks the loop by
@@ -145,10 +145,10 @@ python3 -m process_sim_lab.flowsheet_json schema     # prints RESULT_SCHEMA
 The check has two layers:
 
 1. The schema: required keys and no others, method and unit type from fixed lists, flows ≥ 0, temperature and
-   pressure > 0, finite numbers only, at least one pass.
+   pressure > 0, sizing fields from a fixed list and > 0, finite numbers only, at least one pass.
 2. Checks a schema keyword cannot express: every stream a unit, feed list or product list names exists; every stream
    is a feed or a unit outlet; every component in a flow or a generation is listed; `history` has one entry per pass,
-   ends with `residual`, and `residual` ≤ `tol`.
+   ends with `residual`, and `residual` ≤ `tol`; each unit's `sizing` has exactly the fields of its type.
 
 A change that breaks the output fails in place. For example, a misspelt inlet:
 
@@ -159,7 +159,43 @@ $.units.mixer.inlets[1]: names stream 'recycel', which is not in $.streams
 `tests/test_flowsheet_json.py` checks that the committed result file is valid, matches a fresh solve within 1e-9 and
 holds the hand answer within 1e-8 mol/s.
 
-## 6. Where the tear goes
+## 6. Size the equipment
+
+After the loop converges, each unit is sized once from the converged streams. The result carries a `sizing` object
+per unit, in SI units: the plain parametric data a CAD script can read later.
+
+Reactor: the volume is a spec value, V = 2 m3, and the space time is τ = V / Q = 2 / 0.02 = 100 s.
+
+Drum (vertical, Souders–Brown, `src/process_sim_lab/units/flash_drum_sizing.py`), from the vapour (1.25, 0.75, 0.5)
+mol/s, 2.5 mol/s in all, at 330 K and 2 bar:
+
+1. Vapour molar mass M_V = (1.25 × 0.060 + 0.75 × 0.028 + 0.5 × 0.060) / 2.5 = 0.0504 kg/mol.
+2. Ideal gas, RT = 8.314462618 × 330 = 2743.77 J/mol: ρ_V = P M_V / RT = 2e5 × 0.0504 / 2743.77 = 3.674 kg/m3, and
+   Q_V = 2.5 × 2743.77 / 2e5 = 0.03430 m3/s.
+3. Allowed velocity u_max = K_SB √((ρ_L − ρ_V) / ρ_V) = 0.07 × √(796.33 / 3.674) = 1.0306 m/s.
+4. Cross-section A = Q_V / u_max = 0.03328 m2, so D = √(4A / π) = 0.2058 m, H = 4D = 0.8234 m, and the cylinder
+   volume π D² H / 4 = 0.02740 m3.
+
+The drum is small because the example's flows are small (2.5 mol/s of vapour). In the result file:
+
+```json
+"sizing": {
+  "diameter": 0.20584506300129932,
+  "height": 0.8233802520051973,
+  "volume": 0.02740130448602101,
+  "height_to_diameter": 4.0,
+  "vapour_density": 3.673773754032588,
+  "vapour_volumetric_flow": 0.03429715829983586,
+  "max_vapour_velocity": 1.0305933740631816
+}
+```
+
+The mixer and the splitter have nothing to size: their `sizing` is `{}`. A flash without the four sizing params is
+not sized either. A `heat_exchanger` unit reports its duty, area and LMTD, and a `shortcut_column` unit its minimum
+stages, stages, minimum reflux and reflux ratio (the fields and models: the docstring of
+[`src/process_sim_lab/flowsheet.py`](../src/process_sim_lab/flowsheet.py)).
+
+## 7. Where the tear goes
 
 `recycle` is the natural tear here. With a zero first guess the mixer still passes the fresh feed, so every unit gets
 flow on the first pass. Tearing `reactor-in` or `reactor-out` instead also works, but the tear then needs an `initial`

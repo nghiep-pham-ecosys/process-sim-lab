@@ -37,7 +37,7 @@ first guess still leaves the loop units with the fresh feed. A tear upstream of 
 flash fed by the tear directly or through other units, gives that unit an empty feed on the first pass: the pass fails
 with a ValueError that names the unit and the unguessed tear streams. Give such a tear stream an "initial" guess.
 
-JSON form (all numbers in SI units: mol/s, K, Pa, m3, m3/s, 1/s):
+JSON form (all numbers in SI units: mol/s, K, Pa, m3, m3/s, 1/s, kg/mol, kg/m3, m/s, J/(mol K), W/(m2 K)):
 
     {
       "name": "reactor-flash-recycle",
@@ -53,11 +53,36 @@ JSON form (all numbers in SI units: mol/s, K, Pa, m3, m3/s, 1/s):
 
 A stream has "flows" and optional "temperature" and "pressure" (Stream defaults otherwise). A unit's "params" are the
 keyword arguments of its model: mixer (temperature), splitter (fractions), cstr and pfr (reactant, product,
-rate_constant, volume, volumetric_flow), flash (k_values, tol, max_iter). A flash has two outlets, vapour then liquid;
-a splitter has one outlet per fraction. "tear" may also hold "initial" (a first guess per tear stream) and "q_min",
-"q_max". Unknown keys are rejected, so a misspelt name fails loudly instead of being ignored.
+rate_constant, volume, volumetric_flow), flash (k_values, tol, max_iter), shortcut_column (relative_volatilities,
+light_key, heavy_key, light_key_recovery, heavy_key_recovery, q, and reflux_ratio or reflux_factor). A flash has two
+outlets, vapour then liquid; a shortcut_column has two, distillate then bottoms; a splitter has one outlet per
+fraction. "tear" may also hold "initial" (a first guess per tear stream) and "q_min", "q_max". Unknown keys are
+rejected, so a misspelt name fails loudly instead of being ignored.
 
-Assumptions: the unit models of this library (isothermal, no energy balance); every stream carries the flows of all
+Two unit types carry params used only to size them:
+
+    flash            molar_masses (kg/mol by component), liquid_density (kg/m3), souders_brown_k (m/s) and
+                     height_to_diameter: all four or none. With them the drum is sized from its vapour outlet
+                     (process_sim_lab.units.flash_drum_sizing); without them it is not sized.
+    heat_exchanger   one inlet and one outlet; temperature (outlet, K) sets the outlet; heat_capacities
+                     (J/(mol K) by component), overall_u (W/(m2 K)), utility_in and utility_out (K) size it.
+
+Sizing runs once, on the converged streams, and is reported per unit (UnitResult.sizing, SI units):
+
+    cstr, pfr        volume (m3) and space_time (s) from the params
+    flash            diameter, height (m), volume (m3), height_to_diameter, vapour_density (kg/m3),
+                     vapour_volumetric_flow (m3/s), max_vapour_velocity (m/s); empty without the sizing params
+    heat_exchanger   duty Q = sum_i F_i * cp_i * |T_in - T_out| (W), area (m2) and lmtd (K) of a counter-current
+                     exchanger against the utility (process_sim_lab.units.heat_exchanger); the process stream is the
+                     hot side when it cools and the cold side when it heats
+    shortcut_column  minimum_stages, stages, minimum_reflux and reflux_ratio (process_sim_lab.units.shortcut_column)
+    mixer, splitter  nothing to size: empty
+
+A unit that cannot be sized (a flash with no vapour, an exchanger with no duty or a temperature cross) fails the solve
+with a ValueError that names it.
+
+Assumptions: the unit models of this library (isothermal except the heat exchanger, whose duty is a sensible-heat
+balance with constant molar heat capacities and no phase change; no other energy balance); every stream carries the flows of all
 components of the flowsheet, zero where absent. The tear stream in the result is the last guess x, the value every
 unit downstream of it saw, so the unit that produces it closes its balance to within the residual.
 
@@ -65,7 +90,9 @@ Sources: R. M. Felder and R. W. Rousseau, Elementary Principles of Chemical Proc
 multiple-unit processes, recycle and purge); A. W. Westerberg, H. P. Hutchison, R. L. Motard and P. Winter, Process
 Flowsheeting, Cambridge University Press, 1979 (sequential-modular simulation, tear streams, convergence of recycle
 loops); J. H. Wegstein, "Accelerating convergence of iterative processes", Communications of the ACM 1(6), 1958
-(the secant update; the bounds on q are a safeguard added in flowsheeting practice, not part of that paper).
+(the secant update; the bounds on q are a safeguard added in flowsheeting practice, not part of that paper);
+Felder and Rousseau, ch. 8 (sensible heat with constant heat capacities, the exchanger duty). The unit and sizing
+models cite their own sources.
 """
 
 from __future__ import annotations
@@ -73,15 +100,18 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from process_sim_lab.streams import Stream
 from process_sim_lab.units.cstr import isothermal_cstr_first_order
 from process_sim_lab.units.flash import isothermal_flash
+from process_sim_lab.units.flash_drum_sizing import size_vertical_flash_drum
+from process_sim_lab.units.heat_exchanger import counter_current_area
 from process_sim_lab.units.mixer import mix_streams
 from process_sim_lab.units.pfr import isothermal_pfr_first_order
+from process_sim_lab.units.shortcut_column import shortcut_column
 from process_sim_lab.units.splitter import split_stream
 
 DIRECT = "direct"
@@ -104,22 +134,24 @@ class ConvergenceError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Unit handlers: (unit spec, inlet streams) -> (outlet streams, generation by component in mol/s)
+# Unit handlers: (unit spec, inlet streams) -> (outlet streams, generation by component in mol/s, model result)
+# Sizers: (unit spec, inlet streams, outlet streams, model result) -> sizing by field name, SI units
 # ---------------------------------------------------------------------------------------------------------------------
 
-Handler = Callable[["UnitSpec", list[Stream]], tuple[list[Stream], dict[str, float]]]
+Handler = Callable[["UnitSpec", list[Stream]], tuple[list[Stream], dict[str, float], Any]]
+Sizer = Callable[["UnitSpec", list[Stream], list[Stream], Any], dict[str, float]]
 
 
-def _run_mixer(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float]]:
-    return [mix_streams(inlets, temperature=unit.params.get("temperature"))], {}
+def _run_mixer(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float], Any]:
+    return [mix_streams(inlets, temperature=unit.params.get("temperature"))], {}, None
 
 
-def _run_splitter(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float]]:
-    return split_stream(inlets[0], unit.params["fractions"]), {}
+def _run_splitter(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float], Any]:
+    return split_stream(inlets[0], unit.params["fractions"]), {}, None
 
 
 def _reactor(solve: Callable[..., Any]) -> Handler:
-    def run(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float]]:
+    def run(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float], Any]:
         p = unit.params
         result = solve(
             inlets[0],
@@ -130,15 +162,112 @@ def _reactor(solve: Callable[..., Any]) -> Handler:
             volumetric_flow=p["volumetric_flow"],
         )
         extent = inlets[0].flows[p["reactant"]] - result.outlet.flows[p["reactant"]]
-        return [result.outlet], {p["reactant"]: -extent, p["product"]: extent}
+        return [result.outlet], {p["reactant"]: -extent, p["product"]: extent}, result
 
     return run
 
 
-def _run_flash(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float]]:
+def _run_flash(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float], Any]:
     options = {k: unit.params[k] for k in ("tol", "max_iter") if k in unit.params}
     result = isothermal_flash(inlets[0], k_values=unit.params["k_values"], **options)
-    return [result.vapour, result.liquid], {}
+    return [result.vapour, result.liquid], {}, result
+
+
+def _run_heat_exchanger(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float], Any]:
+    feed = inlets[0]
+    temperature = unit.params["temperature"]
+    if not math.isfinite(temperature):
+        raise ValueError(f"outlet temperature must be finite, got {temperature}")
+    outlet = Stream(flows=dict(feed.flows), temperature=temperature, pressure=feed.pressure)
+    return [outlet], {}, None
+
+
+_COLUMN_OPTIONS = ("q", "reflux_ratio", "reflux_factor")
+
+
+def _run_shortcut_column(unit: UnitSpec, inlets: list[Stream]) -> tuple[list[Stream], dict[str, float], Any]:
+    p = unit.params
+    result = shortcut_column(
+        inlets[0],
+        relative_volatilities=p["relative_volatilities"],
+        light_key=p["light_key"],
+        heavy_key=p["heavy_key"],
+        light_key_recovery=p["light_key_recovery"],
+        heavy_key_recovery=p["heavy_key_recovery"],
+        **{k: p[k] for k in _COLUMN_OPTIONS if k in p},
+    )
+    return [result.distillate, result.bottoms], {}, result
+
+
+def _size_nothing(unit: UnitSpec, inlets: list[Stream], outlets: list[Stream], result: Any) -> dict[str, float]:
+    return {}
+
+
+def _size_reactor(unit: UnitSpec, inlets: list[Stream], outlets: list[Stream], result: Any) -> dict[str, float]:
+    return {"volume": float(unit.params["volume"]), "space_time": result.space_time}
+
+
+FLASH_SIZING_PARAMS = frozenset({"molar_masses", "liquid_density", "souders_brown_k", "height_to_diameter"})
+
+
+def _size_flash(unit: UnitSpec, inlets: list[Stream], outlets: list[Stream], result: Any) -> dict[str, float]:
+    if not FLASH_SIZING_PARAMS <= unit.params.keys():
+        return {}
+    p = unit.params
+    size = size_vertical_flash_drum(
+        outlets[0],
+        molar_masses=p["molar_masses"],
+        liquid_density=p["liquid_density"],
+        souders_brown_k=p["souders_brown_k"],
+        height_to_diameter=p["height_to_diameter"],
+    )
+    return {
+        "diameter": size.diameter,
+        "height": size.height,
+        "volume": size.volume,
+        "height_to_diameter": float(size.height_to_diameter),
+        "vapour_density": size.vapour_density,
+        "vapour_volumetric_flow": size.vapour_volumetric_flow,
+        "max_vapour_velocity": size.max_vapour_velocity,
+    }
+
+
+def _size_heat_exchanger(
+    unit: UnitSpec, inlets: list[Stream], outlets: list[Stream], result: Any
+) -> dict[str, float]:
+    p = unit.params
+    for key in ("overall_u", "utility_in", "utility_out"):
+        if not (math.isfinite(p[key]) and p[key] > 0):
+            raise ValueError(f"{key} must be finite and > 0, got {p[key]}")
+    feed, out = inlets[0], outlets[0]
+    cp = p["heat_capacities"]
+    capacity = 0.0  # sum_i F_i * cp_i, W/K
+    for c, f in feed.flows.items():
+        if f > 0:
+            if c not in cp:
+                raise ValueError(f"no heat capacity for component {c!r}")
+            if not (math.isfinite(cp[c]) and cp[c] > 0):
+                raise ValueError(f"heat capacity of {c!r} must be finite and > 0, got {cp[c]}")
+            capacity += f * cp[c]
+    sides = {"hot_in": feed.temperature, "hot_out": out.temperature,
+             "cold_in": p["utility_in"], "cold_out": p["utility_out"]}
+    if out.temperature > feed.temperature:  # the process stream heats up: it is the cold side
+        sides = {"hot_in": p["utility_in"], "hot_out": p["utility_out"],
+                 "cold_in": feed.temperature, "cold_out": out.temperature}
+    duty = capacity * abs(feed.temperature - out.temperature)
+    hx = counter_current_area(duty=duty, overall_u=p["overall_u"], **sides)
+    return {"duty": duty, "area": hx.area, "lmtd": hx.lmtd}
+
+
+def _size_shortcut_column(
+    unit: UnitSpec, inlets: list[Stream], outlets: list[Stream], result: Any
+) -> dict[str, float]:
+    return {
+        "minimum_stages": result.minimum_stages,
+        "stages": result.stages,
+        "minimum_reflux": result.minimum_reflux,
+        "reflux_ratio": result.reflux_ratio,
+    }
 
 
 _REACTOR_PARAMS = frozenset({"reactant", "product", "rate_constant", "volume", "volumetric_flow"})
@@ -147,23 +276,54 @@ _REACTOR_PARAMS = frozenset({"reactant", "product", "rate_constant", "volume", "
 @dataclass(frozen=True)
 class _UnitType:
     handler: Handler
+    sizer: Sizer
     required: frozenset[str]
     optional: frozenset[str]
     many_inlets: bool  # True: one or more inlets; False: exactly one
 
 
 UNIT_TYPES: dict[str, _UnitType] = {
-    "mixer": _UnitType(_run_mixer, frozenset(), frozenset({"temperature"}), True),
-    "splitter": _UnitType(_run_splitter, frozenset({"fractions"}), frozenset(), False),
-    "cstr": _UnitType(_reactor(isothermal_cstr_first_order), _REACTOR_PARAMS, frozenset(), False),
-    "pfr": _UnitType(_reactor(isothermal_pfr_first_order), _REACTOR_PARAMS, frozenset(), False),
-    "flash": _UnitType(_run_flash, frozenset({"k_values"}), frozenset({"tol", "max_iter"}), False),
+    "mixer": _UnitType(_run_mixer, _size_nothing, frozenset(), frozenset({"temperature"}), True),
+    "splitter": _UnitType(_run_splitter, _size_nothing, frozenset({"fractions"}), frozenset(), False),
+    "cstr": _UnitType(_reactor(isothermal_cstr_first_order), _size_reactor, _REACTOR_PARAMS, frozenset(), False),
+    "pfr": _UnitType(_reactor(isothermal_pfr_first_order), _size_reactor, _REACTOR_PARAMS, frozenset(), False),
+    "flash": _UnitType(
+        _run_flash, _size_flash, frozenset({"k_values"}), frozenset({"tol", "max_iter"}) | FLASH_SIZING_PARAMS, False
+    ),
+    "heat_exchanger": _UnitType(
+        _run_heat_exchanger,
+        _size_heat_exchanger,
+        frozenset({"temperature", "heat_capacities", "overall_u", "utility_in", "utility_out"}),
+        frozenset(),
+        False,
+    ),
+    "shortcut_column": _UnitType(
+        _run_shortcut_column,
+        _size_shortcut_column,
+        frozenset({"relative_volatilities", "light_key", "heavy_key", "light_key_recovery", "heavy_key_recovery"}),
+        frozenset(_COLUMN_OPTIONS),
+        False,
+    ),
+}
+
+# The sizing fields of each unit type, in output order. A flash without its sizing params reports none.
+SIZING_FIELDS: dict[str, tuple[str, ...]] = {
+    "mixer": (),
+    "splitter": (),
+    "cstr": ("volume", "space_time"),
+    "pfr": ("volume", "space_time"),
+    "flash": ("diameter", "height", "volume", "height_to_diameter", "vapour_density", "vapour_volumetric_flow",
+              "max_vapour_velocity"),
+    "heat_exchanger": ("duty", "area", "lmtd"),
+    "shortcut_column": ("minimum_stages", "stages", "minimum_reflux", "reflux_ratio"),
 }
 
 
 def _outlet_count(unit: UnitSpec) -> int:
     if unit.type == "flash":
         return 2  # vapour, liquid
+    if unit.type == "shortcut_column":
+        return 2  # distillate, bottoms
     if unit.type == "splitter":
         return len(unit.params["fractions"])
     return 1
@@ -180,9 +340,10 @@ class UnitSpec:
 
     Attributes:
         name: unique unit name.
-        type: one of UNIT_TYPES ("mixer", "splitter", "cstr", "pfr", "flash").
+        type: one of UNIT_TYPES ("mixer", "splitter", "cstr", "pfr", "flash", "heat_exchanger", "shortcut_column").
         inlets: names of the inlet streams, in order.
-        outlets: names of the outlet streams, in order (a flash: vapour, then liquid; a splitter: one per fraction).
+        outlets: names of the outlet streams, in order (a flash: vapour, then liquid; a shortcut_column: distillate,
+            then bottoms; a splitter: one per fraction).
         params: keyword arguments of the unit model.
     """
 
@@ -434,6 +595,13 @@ def _check_unit(u: UnitSpec) -> None:
         raise ValueError(f"unit {u.name!r} ({u.type}) needs exactly one inlet, got {len(u.inlets)}")
     if u.type == "splitter" and not isinstance(u.params["fractions"], (list, tuple)):
         raise ValueError(f"unit {u.name!r} (splitter): 'fractions' must be a list")
+    if u.type == "flash":
+        given = FLASH_SIZING_PARAMS & u.params.keys()
+        if given and given != FLASH_SIZING_PARAMS:
+            raise ValueError(
+                f"unit {u.name!r} (flash): drum sizing needs all of {sorted(FLASH_SIZING_PARAMS)}; "
+                f"missing {sorted(FLASH_SIZING_PARAMS - given)}"
+            )
     expected = _outlet_count(u)
     if len(u.outlets) != expected:
         raise ValueError(f"unit {u.name!r} ({u.type}) needs {expected} outlets, got {len(u.outlets)}")
@@ -485,12 +653,15 @@ class UnitResult:
         inlets: inlet stream names.
         outlets: outlet stream names.
         generation: net generation by reaction, mol/s by component; empty for a unit without reaction.
+        sizing: equipment size by field name, SI units (SIZING_FIELDS lists the fields of each type); empty for a unit
+            with nothing to size.
     """
 
     type: str
     inlets: tuple[str, ...]
     outlets: tuple[str, ...]
     generation: dict[str, float]
+    sizing: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -500,7 +671,7 @@ class FlowsheetResult:
     Attributes:
         name: flowsheet name.
         streams: every stream by name (feeds, internal streams, tear streams at their last guess, products).
-        units: per-unit results by unit name, in calculation order.
+        units: per-unit results by unit name (generation and sizing), in calculation order.
         feeds: feed stream names.
         products: product stream names.
         components: every component of the flowsheet.
@@ -577,6 +748,7 @@ class FlowsheetResult:
                     "inlets": list(u.inlets),
                     "outlets": list(u.outlets),
                     "generation": dict(u.generation),
+                    "sizing": dict(u.sizing),
                 }
                 for name, u in self.units.items()
             },
@@ -614,18 +786,33 @@ def _scaled_residual(x: Sequence[float], gx: Sequence[float]) -> float:
     return max(abs(g - v) / max(1.0, abs(v)) for v, g in zip(x, gx))
 
 
+@dataclass(frozen=True)
+class _UnitRun:
+    """What one unit saw and made in a pass: its inlet and outlet streams and its model result."""
+
+    inlets: list[Stream]
+    outlets: list[Stream]
+    model: Any
+
+
 def _run_pass(
     fs: Flowsheet, tear_guess: Mapping[str, Stream]
-) -> tuple[dict[str, Stream], dict[str, UnitResult], dict[str, Stream]]:
-    """Run every unit once. Returns the stream table (tear streams at the guess), unit results and computed tears."""
+) -> tuple[dict[str, Stream], dict[str, UnitResult], dict[str, Stream], dict[str, _UnitRun]]:
+    """Run every unit once.
+
+    Returns the stream table (tear streams at the guess), unit results without sizing, the computed tears, and what
+    each unit saw and made (for sizing after the last pass).
+    """
     by_name = {u.name: u for u in fs.units}
     streams: dict[str, Stream] = {**fs.feeds, **tear_guess}
     computed: dict[str, Stream] = {}
     results: dict[str, UnitResult] = {}
+    runs: dict[str, _UnitRun] = {}
     for name in fs.order:
         u = by_name[name]
+        inlets = [streams[s] for s in u.inlets]
         try:
-            outlets, generation = UNIT_TYPES[u.type].handler(u, [streams[s] for s in u.inlets])
+            outlets, generation, model = UNIT_TYPES[u.type].handler(u, inlets)
         except (ValueError, TypeError) as exc:  # a TypeError here is a param of the wrong type, e.g. a string
             raise ValueError(f"unit {u.name!r} ({u.type}): {exc}") from exc
         for s, stream in zip(u.outlets, outlets):
@@ -634,7 +821,24 @@ def _run_pass(
             else:
                 streams[s] = stream
         results[name] = UnitResult(type=u.type, inlets=u.inlets, outlets=u.outlets, generation=generation)
-    return streams, results, computed
+        runs[name] = _UnitRun(inlets=inlets, outlets=outlets, model=model)
+    return streams, results, computed, runs
+
+
+def _size_units(
+    fs: Flowsheet, results: dict[str, UnitResult], runs: Mapping[str, _UnitRun]
+) -> dict[str, UnitResult]:
+    """Add the sizing of every unit, from the streams and model results of the last pass."""
+    by_name = {u.name: u for u in fs.units}
+    sized: dict[str, UnitResult] = {}
+    for name, result in results.items():
+        u, run = by_name[name], runs[name]
+        try:
+            sizing = UNIT_TYPES[u.type].sizer(u, run.inlets, run.outlets, run.model)
+        except (ValueError, TypeError) as exc:  # a TypeError here is a sizing param of the wrong type
+            raise ValueError(f"unit {u.name!r} ({u.type}) cannot be sized: {exc}") from exc
+        sized[name] = replace(result, sizing=sizing)
+    return sized
 
 
 def _wegstein_step(
@@ -669,11 +873,13 @@ def solve_flowsheet(
         max_iter: most passes allowed; overrides the tear settings when given.
 
     Returns:
-        FlowsheetResult with every stream, the per-unit generation, the passes run and the residual history.
+        FlowsheetResult with every stream, the per-unit generation and sizing, the passes run and the residual
+        history.
 
     Raises:
         ConvergenceError: the residual is still above tol after max_iter passes, or a tear variable is not finite.
-        ValueError: a bad flowsheet, or a unit that rejects its inlet during a pass (its name is in the message).
+        ValueError: a bad flowsheet, a unit that rejects its inlet during a pass, or a unit that cannot be sized on
+            the converged streams (its name is in the message).
     """
     fs = flowsheet if isinstance(flowsheet, Flowsheet) else Flowsheet.from_dict(flowsheet)
     overrides = {k: v for k, v in (("method", method), ("tol", tol), ("max_iter", max_iter)) if v is not None}
@@ -706,7 +912,7 @@ def solve_flowsheet(
     for iteration in range(1, t.max_iter + 1):
         tear_guess = _from_vector(x, names, fs.components)
         try:
-            streams, results, computed = _run_pass(fs, tear_guess)
+            streams, results, computed, runs = _run_pass(fs, tear_guess)
         except ValueError as exc:
             if iteration == 1 and unguessed:
                 raise ValueError(
@@ -727,7 +933,7 @@ def solve_flowsheet(
             return FlowsheetResult(
                 name=fs.name,
                 streams={**streams, **tear_guess},
-                units=results,
+                units=_size_units(fs, results, runs),
                 feeds=tuple(fs.feeds),
                 products=fs.products,
                 components=fs.components,

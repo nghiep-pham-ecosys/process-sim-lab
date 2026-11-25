@@ -17,7 +17,13 @@
       "type": "flash",
       "inlets": ["reactor-out"],
       "outlets": ["vapour", "liquid"],
-      "params": {"k_values": {"A": 5.0, "I": 1.0, "B": 0.3333333333333333}}
+      "params": {
+        "k_values": {"A": 5.0, "I": 1.0, "B": 0.3333333333333333},
+        "molar_masses": {"A": 0.06, "I": 0.028, "B": 0.06},
+        "liquid_density": 800.0,
+        "souders_brown_k": 0.07,
+        "height_to_diameter": 4.0
+      }
     },
     {
       "name": "purge-split",

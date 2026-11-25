@@ -25,3 +25,7 @@ __all__ += ["HeatExchangerResult", "counter_current_area", "log_mean_temperature
 from process_sim_lab.units.shortcut_column import ShortcutColumnResult, shortcut_column  # noqa: E402
 
 __all__ += ["ShortcutColumnResult", "shortcut_column"]
+
+from process_sim_lab.units.flash_drum_sizing import FlashDrumSize, size_vertical_flash_drum  # noqa: E402
+
+__all__ += ["FlashDrumSize", "size_vertical_flash_drum"]

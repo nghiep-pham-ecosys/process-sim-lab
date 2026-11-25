@@ -18,7 +18,8 @@ Error types:
 
 Any other exception is a bug in the library and is raised, not hidden in an error result.
 
-Results use SI units (mol/s, K, Pa, m2, s, W), like the library.
+Results use SI units (mol/s, K, Pa, m, m2, m3, s, W, kg/m3, m3/s, m/s), like the library; the sizing fields of
+solve_flowsheet and their units are listed in process_sim_lab.flowsheet_json.
 """
 
 from __future__ import annotations

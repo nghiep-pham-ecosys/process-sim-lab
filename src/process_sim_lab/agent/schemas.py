@@ -267,6 +267,66 @@ def _flash_params() -> dict[str, Any]:
     }
 
 
+def _flash_sizing_params() -> dict[str, Any]:
+    return {
+        "molar_masses": {
+            "type": "object",
+            "description": "molar mass M_i, kg/mol, keyed by component name; one for every component in the vapour. "
+            "Drum sizing: give all four sizing params or none",
+            "additionalProperties": _number("molar mass of one component, kg/mol, > 0", exclusiveMinimum=0),
+        },
+        "liquid_density": _number("liquid density at drum conditions, kg/m3, > 0, above the vapour density; drum "
+                                  "sizing", exclusiveMinimum=0),
+        "souders_brown_k": _number("Souders-Brown coefficient K_SB, m/s, > 0 (about 0.07 m/s with a demister pad); "
+                                   "drum sizing", exclusiveMinimum=0),
+        "height_to_diameter": _number("drum height over diameter H / D, dimensionless, > 0 (usually 3 to 5); drum "
+                                      "sizing", exclusiveMinimum=0),
+    }
+
+
+def _heat_exchanger_params() -> dict[str, Any]:
+    return {
+        "temperature": _number("process outlet temperature, K, > 0", exclusiveMinimum=0),
+        "heat_capacities": {
+            "type": "object",
+            "description": "molar heat capacity cp_i of the process stream, J/(mol K), keyed by component name; one "
+            "for every component with a positive flow; constant over the temperature change",
+            "additionalProperties": _number("molar heat capacity of one component, J/(mol K), > 0",
+                                            exclusiveMinimum=0),
+        },
+        "overall_u": _number("overall heat-transfer coefficient U, W/(m2 K), > 0", exclusiveMinimum=0),
+        "utility_in": _number("utility inlet temperature, K, > 0; counter-current, no temperature cross",
+                              exclusiveMinimum=0),
+        "utility_out": _number("utility outlet temperature, K, > 0; a cooling utility heats up, a heating utility "
+                               "cools down", exclusiveMinimum=0),
+    }
+
+
+def _column_params() -> dict[str, Any]:
+    return {
+        "relative_volatilities": {
+            "type": "object",
+            "description": "relative volatility alpha_i against any one reference component, dimensionless, "
+            "keyed by component name; one for every component with a positive flow",
+            "additionalProperties": _number("relative volatility of one component, dimensionless, > 0",
+                                            exclusiveMinimum=0),
+        },
+        "light_key": _component("component name of the light key; more volatile than the heavy key"),
+        "heavy_key": _component("component name of the heavy key; no component may lie between the keys"),
+        "light_key_recovery": _number("fraction of the light key to the distillate, dimensionless, in (0, 1)",
+                                      exclusiveMinimum=0, maximum=1),
+        "heavy_key_recovery": _number("fraction of the heavy key to the bottoms, dimensionless, in (0, 1); the "
+                                      "two recoveries sum to more than 1", exclusiveMinimum=0, maximum=1),
+        "q": _number("feed condition, liquid fraction added below the feed stage, dimensionless; 1 saturated "
+                     "liquid (default), 0 saturated vapour"),
+        "reflux_ratio": _number("operating reflux ratio R = L / D, dimensionless, > R_min", exclusiveMinimum=0),
+        "reflux_factor": _number("operating R / R_min, dimensionless, > 1", exclusiveMinimum=1),
+    }
+
+
+_COLUMN_REQUIRED = ["relative_volatilities", "light_key", "heavy_key", "light_key_recovery", "heavy_key_recovery"]
+
+
 def _fractions() -> dict[str, Any]:
     return {
         "type": "array",
@@ -295,7 +355,12 @@ UNIT_PARAMS_SCHEMAS: dict[str, dict[str, Any]] = {
     "splitter": _object("params of a splitter unit", {"fractions": _fractions()}, ["fractions"]),
     "cstr": _object("params of an isothermal first-order CSTR", _reactor_params(), list(_REACTOR_REQUIRED)),
     "pfr": _object("params of an isothermal first-order PFR", _reactor_params(), list(_REACTOR_REQUIRED)),
-    "flash": _object("params of an isothermal flash drum", _flash_params(), ["k_values"]),
+    "flash": _object("params of an isothermal flash drum; the four sizing params size the drum (all or none)",
+                     {**_flash_params(), **_flash_sizing_params()}, ["k_values"]),
+    "heat_exchanger": _object("params of a heat exchanger against a utility: the outlet temperature, and the data "
+                              "that size it", _heat_exchanger_params(), list(_heat_exchanger_params())),
+    "shortcut_column": _object("params of a shortcut (FUG) distillation column; give reflux_ratio or reflux_factor, "
+                               "not both", _column_params(), list(_COLUMN_REQUIRED)),
 }
 
 
@@ -324,7 +389,14 @@ _FLOWSHEET_EXAMPLE = {
             "type": "flash",
             "inlets": ["reactor-out"],
             "outlets": ["vapour", "liquid"],
-            "params": {"k_values": {"A": 5.0, "I": 1.0, "B": 0.3333333333333333}},
+            "params": {
+                "k_values": {"A": 5.0, "I": 1.0, "B": 0.3333333333333333},
+                # Drum sizing; illustrative values: M_A = M_B (A -> B keeps the mass), I is nitrogen-like.
+                "molar_masses": {"A": 0.06, "I": 0.028, "B": 0.06},
+                "liquid_density": 800.0,
+                "souders_brown_k": 0.07,
+                "height_to_diameter": 4.0,
+            },
         },
         {
             "name": "purge-split",
@@ -396,24 +468,7 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "and pressure; the method does not compute them.",
         {
             "feed": _stream("inlet stream, total flow > 0; must contain both keys"),
-            "relative_volatilities": {
-                "type": "object",
-                "description": "relative volatility alpha_i against any one reference component, dimensionless, "
-                "keyed by component name; one for every component with a positive flow",
-                "additionalProperties": _number("relative volatility of one component, dimensionless, > 0",
-                                                exclusiveMinimum=0),
-            },
-            "light_key": _component("component name of the light key; more volatile than the heavy key"),
-            "heavy_key": _component("component name of the heavy key; no component may lie between the keys"),
-            "light_key_recovery": _number("fraction of the light key to the distillate, dimensionless, in (0, 1)",
-                                          exclusiveMinimum=0, maximum=1),
-            "heavy_key_recovery": _number("fraction of the heavy key to the bottoms, dimensionless, in (0, 1); the "
-                                          "two recoveries sum to more than 1", exclusiveMinimum=0, maximum=1),
-            "q": _number("feed condition, liquid fraction added below the feed stage, dimensionless; 1 saturated "
-                         "liquid (default), 0 saturated vapour"),
-            "reflux_ratio": _number("operating reflux ratio R = L / D, dimensionless, > R_min",
-                                    exclusiveMinimum=0),
-            "reflux_factor": _number("operating R / R_min, dimensionless, > 1", exclusiveMinimum=1),
+            **_column_params(),
         },
         ["feed", "relative_volatilities", "light_key", "heavy_key", "light_key_recovery", "heavy_key_recovery"],
         # tests/test_shortcut_column.py: P. C. Wankat, Separation Process Engineering, 5th ed., Examples 7-1 and 7-2;
@@ -467,7 +522,8 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "Solve a flowsheet",
         "Solve a sequential-modular flowsheet given in the JSON form of process_sim_lab.flowsheet: feeds, units "
         "joined by named streams, and tear streams for recycle loops. Each unit's params are checked against the "
-        "params schema of its type. Returns every stream, the per-unit generation and the convergence record.",
+        "params schema of its type. Returns every stream, the per-unit generation and sizing, and the convergence "
+        "record.",
         {
             "name": {"type": "string", "description": "flowsheet name"},
             "feeds": {"type": "object", "description": "feed streams by name",
@@ -482,8 +538,8 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
                         "name": {"type": "string", "minLength": 1, "description": "unique unit name"},
                         "type": {"type": "string", "enum": sorted(UNIT_TYPES), "description": "unit type"},
                         "inlets": _names("inlet stream names, in order"),
-                        "outlets": _names("outlet stream names, in order (flash: vapour then liquid; splitter: one "
-                                          "per fraction)"),
+                        "outlets": _names("outlet stream names, in order (flash: vapour then liquid; "
+                                          "shortcut_column: distillate then bottoms; splitter: one per fraction)"),
                         "params": {"type": "object", "description": "unit model arguments, SI units; see the params "
                                    "schema of the unit type"},
                     },
