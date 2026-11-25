@@ -1,0 +1,106 @@
+{
+  "id": "flowsheet-linear-loop-small-purge",
+  "description": "Linear recycle loop with a purge of 1/10, where direct substitution is slow; Wegstein (the default) converges.",
+  "source": "tests/test_flowsheet.py LinearLoopTest test_max_iter_guard_raises: a = 0.9 / 2 = 0.45, R_A = 0.45 * 10 / 0.55 = 90/11, M = 10 / 0.1 = 100, R_B = 0.9 * 100 - 90/11 = 900/11 mol/s; purge = 0.1 (100/11, 1000/11) = (10/11, 100/11) mol/s. Tolerance 1e-8 mol/s on A (the test's VALUE_TOL) and 1e-6 mol/s on B and the overall balance (the test's delta).",
+  "call": {
+    "name": "solve_flowsheet",
+    "arguments": {
+      "name": "linear-loop",
+      "feeds": {
+        "feed": {
+          "flows": {
+            "A": 10.0
+          }
+        }
+      },
+      "units": [
+        {
+          "name": "mixer",
+          "type": "mixer",
+          "inlets": [
+            "feed",
+            "recycle"
+          ],
+          "outlets": [
+            "s1"
+          ]
+        },
+        {
+          "name": "reactor",
+          "type": "cstr",
+          "inlets": [
+            "s1"
+          ],
+          "outlets": [
+            "s2"
+          ],
+          "params": {
+            "reactant": "A",
+            "product": "B",
+            "rate_constant": 0.01,
+            "volume": 2.0,
+            "volumetric_flow": 0.02
+          }
+        },
+        {
+          "name": "split",
+          "type": "splitter",
+          "inlets": [
+            "s2"
+          ],
+          "outlets": [
+            "purge",
+            "recycle"
+          ],
+          "params": {
+            "fractions": [
+              0.1,
+              0.9
+            ]
+          }
+        }
+      ],
+      "tear": {
+        "streams": [
+          "recycle"
+        ]
+      }
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/method",
+      "value": "wegstein"
+    },
+    {
+      "pointer": "/streams/recycle/flows/A",
+      "value": 8.181818181818182,
+      "abs_tol": 1e-08
+    },
+    {
+      "pointer": "/streams/recycle/flows/B",
+      "value": 81.81818181818181,
+      "abs_tol": 1e-06
+    },
+    {
+      "pointer": "/streams/purge/flows/A",
+      "value": 0.9090909090909091,
+      "abs_tol": 1e-08
+    },
+    {
+      "pointer": "/streams/purge/flows/B",
+      "value": 9.090909090909092,
+      "abs_tol": 1e-06
+    },
+    {
+      "pointer": "/overall_balance/A",
+      "value": 0.0,
+      "abs_tol": 1e-06
+    },
+    {
+      "pointer": "/overall_balance/B",
+      "value": 0.0,
+      "abs_tol": 1e-06
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "error-model-temperature-cross",
+  "description": "A counter-current exchanger whose water leaves at 410 K, above the 400 K process inlet: the schema accepts it, the model reports a temperature cross.",
+  "source": "tests/test_runner.py StructuredErrorTest test_model_error and tests/test_flowsheet.py HeatExchangerUnitTest test_exchanger_that_cannot_be_sized_names_the_unit (water 300 -> 410 K against a process 400 -> 340 K): dT1 = 400 - 410 = -10 K, dT2 = 340 - 300 = 40 K. Tolerance: none, the check is an exact string.",
+  "call": {
+    "name": "heat_exchanger_area",
+    "arguments": {
+      "duty": 51000.0,
+      "overall_u": 500.0,
+      "hot_in": 400.0,
+      "hot_out": 340.0,
+      "cold_in": 300.0,
+      "cold_out": 410.0
+    }
+  },
+  "expected_error": "model_error",
+  "expected": [
+    {
+      "pointer": "/message",
+      "value": "temperature cross: dT1 = -10.0 K, dT2 = 40.0 K; both must be > 0"
+    }
+  ]
+}

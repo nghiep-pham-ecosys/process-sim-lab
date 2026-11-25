@@ -18,9 +18,14 @@ DIR defaults to ``evals/cases`` of the repository. Each ``*.json`` file there is
     }
 
 A case passes when ``run_tool`` returns ``ok`` and every expected value is found in its "result" at the JSON pointer
-(RFC 6901): a number within ``abs_tol`` (required for numbers), anything else equal. The command exits with 0 when
-every case passes, otherwise 1. No LLM is called: the cases are fixed tool calls, so the same check can later grade
-the calls an agent makes.
+(RFC 6901): a number within ``abs_tol`` (required for numbers), anything else equal.
+
+An error-path case adds ``"expected_error"``, one of the runner's error types (``unknown_tool``, ``invalid_input``,
+``model_error``, ``convergence_error``). It passes when the call fails with that type and every expected value is
+found in the call's "error" object instead, for example ``{"pointer": "/issues/0/path", "value": "$.volume"}``.
+
+The command exits with 0 when every case passes, otherwise 1. No LLM is called: the cases are fixed tool calls, so
+the same check can later grade the calls an agent makes.
 """
 
 from __future__ import annotations
@@ -34,12 +39,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from process_sim_lab.agent.runner import run_tool
+from process_sim_lab.agent.runner import CONVERGENCE_ERROR, INVALID_INPUT, MODEL_ERROR, UNKNOWN_TOOL, run_tool
 
 DEFAULT_CASES = Path(__file__).resolve().parents[3] / "evals" / "cases"
 
 _CASE_KEYS = {"id", "description", "source", "call", "expected"}
+_OPTIONAL_KEYS = {"expected_error"}
 _CALL_KEYS = {"name", "arguments"}
+ERROR_TYPES = (UNKNOWN_TOOL, INVALID_INPUT, MODEL_ERROR, CONVERGENCE_ERROR)
 
 
 @dataclass(frozen=True)
@@ -57,6 +64,7 @@ class Case:
     tool: str
     arguments: Any
     expected: tuple[Expectation, ...]
+    expected_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -74,8 +82,14 @@ def parse_case(obj: Any, where: str) -> Case:
     """Build a Case from its JSON form; ``where`` names the file in error messages."""
     if not isinstance(obj, Mapping):
         raise ValueError(f"{where}: a case must be a JSON object")
-    if set(obj) != _CASE_KEYS:
-        raise ValueError(f"{where}: a case needs exactly the keys {sorted(_CASE_KEYS)}, got {sorted(obj)}")
+    if not _CASE_KEYS <= set(obj) <= _CASE_KEYS | _OPTIONAL_KEYS:
+        raise ValueError(
+            f"{where}: a case needs the keys {sorted(_CASE_KEYS)} and may have {sorted(_OPTIONAL_KEYS)}, "
+            f"got {sorted(obj)}"
+        )
+    expected_error = obj.get("expected_error")
+    if expected_error is not None and expected_error not in ERROR_TYPES:
+        raise ValueError(f"{where}: 'expected_error' must be one of {list(ERROR_TYPES)}, got {expected_error!r}")
     for key in ("id", "description", "source"):
         if not isinstance(obj[key], str) or not obj[key]:
             raise ValueError(f"{where}: {key!r} must be a non-empty string")
@@ -94,7 +108,8 @@ def parse_case(obj: Any, where: str) -> Case:
         if _is_number(e["value"]) and not (_is_number(tol) and math.isfinite(tol) and tol >= 0):
             raise ValueError(f"{where}: expected[{i}] is a number and needs a finite abs_tol >= 0")
         expected.append(Expectation(e["pointer"], e["value"], tol))
-    return Case(obj["id"], obj["description"], obj["source"], call["name"], call["arguments"], tuple(expected))
+    return Case(obj["id"], obj["description"], obj["source"], call["name"], call["arguments"], tuple(expected),
+                expected_error)
 
 
 def load_cases(directory: Path) -> list[Case]:
@@ -126,17 +141,28 @@ def resolve_pointer(document: Any, pointer: str) -> Any:
 
 
 def run_case(case: Case) -> CaseResult:
-    """Run the case's tool call and compare the result with every expectation."""
+    """Run the case's tool call; compare its result (an error-path case: its error) with every expectation."""
     out = run_tool(case.tool, case.arguments)
-    if not out["ok"]:
+    if case.expected_error is None:
+        if not out["ok"]:
+            error = out["error"]
+            return CaseResult(case, False, (f"tool call failed: {error['type']}: {error['message']}",))
+        document, part = out["result"], "result"
+    else:
+        if out["ok"]:
+            return CaseResult(case, False, (f"expected a {case.expected_error} error, the tool call succeeded",))
         error = out["error"]
-        return CaseResult(case, False, (f"tool call failed: {error['type']}: {error['message']}",))
+        if error["type"] != case.expected_error:
+            return CaseResult(
+                case, False, (f"expected a {case.expected_error} error, got {error['type']}: {error['message']}",)
+            )
+        document, part = error, "error"
     failures = []
     for e in case.expected:
         try:
-            got = resolve_pointer(out["result"], e.pointer)
+            got = resolve_pointer(document, e.pointer)
         except KeyError:
-            failures.append(f"{e.pointer}: not in the result")
+            failures.append(f"{e.pointer}: not in the {part}")
             continue
         if e.abs_tol is not None and _is_number(e.value):
             if not _is_number(got) or not abs(got - e.value) <= e.abs_tol:
@@ -161,7 +187,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     results = evaluate(load_cases(args.cases))
     for r in results:
         checks = len(r.case.expected)
-        print(f"{'PASS' if r.passed else 'FAIL'}  {r.case.id}  ({r.case.tool}, {checks} check{'s' * (checks != 1)})")
+        expects = f", expects {r.case.expected_error}" if r.case.expected_error else ""
+        plural = "s" * (checks != 1)
+        print(f"{'PASS' if r.passed else 'FAIL'}  {r.case.id}  ({r.case.tool}{expects}, {checks} check{plural})")
         for failure in r.failures:
             print(f"      {failure}")
     passed = sum(r.passed for r in results)

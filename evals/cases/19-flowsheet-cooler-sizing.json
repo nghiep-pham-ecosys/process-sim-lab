@@ -1,0 +1,75 @@
+{
+  "id": "flowsheet-cooler-sizing",
+  "description": "Heat exchanger unit in a flowsheet: a process stream cooled from 400 to 340 K against water 300 -> 320 K; duty, LMTD and area.",
+  "source": "tests/test_flowsheet.py HeatExchangerUnitTest test_cooler_hand_checked: F cp = 4 * 100 + 6 * 75 = 850 W/K, Q = 850 * 60 = 51 000 W; dT1 = 400 - 320 = 80 K, dT2 = 340 - 300 = 40 K, LMTD = 40 / ln 2 = 57.7078016 K; A = 51 000 / (500 * 57.7078016) = 1.7675253 m2. Tolerance 1e-9 (the test uses 9 places).",
+  "call": {
+    "name": "solve_flowsheet",
+    "arguments": {
+      "name": "process-exchanger",
+      "feeds": {
+        "feed": {
+          "flows": {
+            "A": 4.0,
+            "W": 6.0
+          },
+          "temperature": 400.0,
+          "pressure": 300000.0
+        }
+      },
+      "units": [
+        {
+          "name": "hx",
+          "type": "heat_exchanger",
+          "inlets": [
+            "feed"
+          ],
+          "outlets": [
+            "out"
+          ],
+          "params": {
+            "temperature": 340.0,
+            "heat_capacities": {
+              "A": 100.0,
+              "W": 75.0
+            },
+            "overall_u": 500.0,
+            "utility_in": 300.0,
+            "utility_out": 320.0
+          }
+        }
+      ]
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/units/hx/sizing/duty",
+      "value": 51000.0,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/units/hx/sizing/lmtd",
+      "value": 57.70780163555854,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/units/hx/sizing/area",
+      "value": 1.7675253104,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/streams/out/temperature",
+      "value": 340.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/streams/out/pressure",
+      "value": 300000.0,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/streams/out/flows/W",
+      "value": 6.0,
+      "abs_tol": 1e-12
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "id": "error-convergence",
+  "description": "The linear loop with a purge of 1/10 by direct substitution, capped at 100 passes: the total moles converge at rate 0.9, so the loop stops unconverged.",
+  "source": "tests/test_flowsheet.py LinearLoopTest test_max_iter_guard_raises and tests/test_runner.py StructuredErrorTest test_convergence_error: the error reports the 100 passes it made. Tolerance 0 on the pass count (an integer).",
+  "call": {
+    "name": "solve_flowsheet",
+    "arguments": {
+      "name": "linear-loop",
+      "feeds": {
+        "feed": {
+          "flows": {
+            "A": 10.0
+          }
+        }
+      },
+      "units": [
+        {
+          "name": "mixer",
+          "type": "mixer",
+          "inlets": [
+            "feed",
+            "recycle"
+          ],
+          "outlets": [
+            "s1"
+          ]
+        },
+        {
+          "name": "reactor",
+          "type": "cstr",
+          "inlets": [
+            "s1"
+          ],
+          "outlets": [
+            "s2"
+          ],
+          "params": {
+            "reactant": "A",
+            "product": "B",
+            "rate_constant": 0.01,
+            "volume": 2.0,
+            "volumetric_flow": 0.02
+          }
+        },
+        {
+          "name": "split",
+          "type": "splitter",
+          "inlets": [
+            "s2"
+          ],
+          "outlets": [
+            "purge",
+            "recycle"
+          ],
+          "params": {
+            "fractions": [
+              0.1,
+              0.9
+            ]
+          }
+        }
+      ],
+      "tear": {
+        "streams": [
+          "recycle"
+        ],
+        "method": "direct",
+        "max_iter": 100
+      }
+    }
+  },
+  "expected_error": "convergence_error",
+  "expected": [
+    {
+      "pointer": "/iterations",
+      "value": 100,
+      "abs_tol": 0
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "error-unknown-tool",
+  "description": "A call to a tool that does not exist returns unknown_tool and lists the known tools, so an agent can pick shortcut_column.",
+  "source": "tests/test_runner.py StructuredErrorTest test_unknown_tool: the message names the tool and known_tools lists every schema in order (shortcut_column is the sixth). Tolerance: none, every check is an exact string.",
+  "call": {
+    "name": "distillation_column",
+    "arguments": {
+      "stages": 10
+    }
+  },
+  "expected_error": "unknown_tool",
+  "expected": [
+    {
+      "pointer": "/message",
+      "value": "unknown tool 'distillation_column'"
+    },
+    {
+      "pointer": "/known_tools/5",
+      "value": "shortcut_column"
+    }
+  ]
+}
