@@ -26,6 +26,80 @@ print(r.conversion)   # 0.8333... = k*tau / (1 + k*tau), tau = 500 s
 ```
 
 Week 2: unit library (PFR, mixer, splitter, isothermal flash drum, LMTD heat exchanger) and Antoine vapour pressure.
+Each example below is run by `tests/test_readme.py`, and its `assert` is the hand-check from the unit's own test.
+
+PFR, same feed and kinetics form as the CSTR. With k·τ = ln 2 the conversion is 1 − exp(−ln 2) = 1/2
+(`tests/test_pfr.py`):
+
+```python
+import math
+from process_sim_lab import Stream
+from process_sim_lab.units import isothermal_pfr_first_order
+
+feed = Stream(flows={"A": 10.0, "W": 50.0}, temperature=330.0)        # mol/s, K
+r = isothermal_pfr_first_order(feed, reactant="A", product="B",
+                               rate_constant=math.log(2) / 100, volume=1.0, volumetric_flow=0.01)
+print(r.space_time, r.conversion)   # 100.0 s, 0.5
+assert abs(r.conversion - 0.5) < 1e-12
+```
+
+Mixer and splitter: the mixer adds component flows and takes the lowest inlet pressure; the splitter scales every
+flow by the fraction (`tests/test_mixer.py`, `tests/test_splitter.py`):
+
+```python
+from process_sim_lab import Stream
+from process_sim_lab.units import mix_streams, split_stream
+
+s1 = Stream(flows={"A": 2.0, "B": 1.0}, temperature=300.0, pressure=3e5)
+s2 = Stream(flows={"A": 3.0, "C": 4.0}, temperature=300.0, pressure=2e5)
+mixed = mix_streams([s1, s2])
+print(mixed.flows, mixed.pressure)   # {'A': 5.0, 'B': 1.0, 'C': 4.0} 200000.0
+assert mixed.flows == {"A": 5.0, "B": 1.0, "C": 4.0} and mixed.pressure == 2e5
+
+purge, recycle = split_stream(Stream(flows={"A": 6.0, "B": 4.0}), [0.25, 0.75])
+print(purge.flows, recycle.flows)    # {'A': 1.5, 'B': 1.0} {'A': 4.5, 'B': 3.0}
+assert purge.flows == {"A": 1.5, "B": 1.0} and recycle.flows == {"A": 4.5, "B": 3.0}
+```
+
+Isothermal flash drum with given K-values. For z = (0.5, 0.5) and K = (2, 0.5) the Rachford–Rice root is
+ψ = 0.5, x = (1/3, 2/3), y = (2/3, 1/3) (`tests/test_flash.py`):
+
+```python
+from process_sim_lab import Stream
+from process_sim_lab.units import isothermal_flash
+
+feed = Stream(flows={"A": 5.0, "B": 5.0}, temperature=350.0, pressure=1.5e5)
+r = isothermal_flash(feed, k_values={"A": 2.0, "B": 0.5})
+print(r.vapour_fraction, r.x["A"], r.y["A"])   # 0.5, 0.3333..., 0.6666...
+assert abs(r.vapour_fraction - 0.5) < 1e-9
+assert abs(r.x["A"] - 1 / 3) < 1e-9 and abs(r.y["A"] - 2 / 3) < 1e-9
+```
+
+Heat exchanger: log-mean temperature difference and the counter-current area. Terminal differences 80 K and 60 K
+give LMTD = 20 / ln(4/3) = 69.5212 K, and A = 5e5 / (500 · 69.5212) = 14.3841 m² (`tests/test_heat_exchanger.py`):
+
+```python
+from process_sim_lab.units import counter_current_area, log_mean_temperature_difference
+
+print(log_mean_temperature_difference(80.0, 60.0))     # 69.5211899...
+r = counter_current_area(duty=5e5, overall_u=500.0,                 # W, W/(m2 K)
+                         hot_in=423.15, hot_out=363.15, cold_in=303.15, cold_out=343.15)   # K
+print(r.area)                                          # 14.3841036... m2
+assert abs(log_mean_temperature_difference(80.0, 60.0) - 69.5211899356) < 1e-6
+assert abs(r.area - 14.3841036) < 1e-6
+```
+
+Antoine vapour pressure (NIST constants). Benzene at 300 K: log10(P/bar) = 4.01814 − 1203.835 / (300 − 53.226),
+so P = 13 799 Pa; its normal boiling point is 353.3 K ± 0.1 K (NIST WebBook) (`tests/test_antoine.py`):
+
+```python
+from process_sim_lab.antoine import saturation_temperature, vapour_pressure
+
+print(vapour_pressure("benzene", 300.0))               # 13799.09... Pa
+print(saturation_temperature("benzene", 101_325.0))    # 353.25... K
+assert abs(vapour_pressure("benzene", 300.0) - 13_799.0) < 1.0
+assert abs(saturation_temperature("benzene", 101_325.0) - 353.3) < 0.1
+```
 
 Week 3: a flowsheet defined in JSON, solved unit by unit, with a recycle loop converged by tearing a stream
 (successive substitution or Wegstein). The example in
@@ -104,7 +178,12 @@ A bad call comes back as a structured error. Its type is `unknown_tool`, `invali
 field), `model_error` (valid shape, but the model rejects it, such as a temperature cross) or `convergence_error`:
 
 ```python
-run_tool("heat_exchanger_area", {..., "overall_u": -500.0})
+from process_sim_lab.agent.runner import run_tool
+
+bad = run_tool("heat_exchanger_area", {"duty": 5e5, "overall_u": -500.0,
+                                       "hot_in": 423.15, "hot_out": 363.15,
+                                       "cold_in": 303.15, "cold_out": 343.15})
+assert bad["error"]["type"] == "invalid_input"
 # {"ok": False, "tool": "heat_exchanger_area",
 #  "error": {"type": "invalid_input", "message": "$.overall_u: must be > 0, got -500.0",
 #            "issues": [{"path": "$.overall_u", "message": "must be > 0, got -500.0"}]}}
