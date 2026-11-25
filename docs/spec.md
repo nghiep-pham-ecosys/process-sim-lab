@@ -35,6 +35,8 @@ Out of scope for the first 4 weeks:
 ## 3. Principles
 
 - Python 3.12. Core library: standard library only. `numpy`/`scipy` may come later, one PR each, with a reason.
+- Optional extras stay outside the core: `mcp` (the official MCP Python SDK, MIT) is needed only by
+  `mcp_server.py`, and its tests are skipped without it.
 - SI units inside the library. Conversions only at the edges.
 - Each model: a docstring with the equations, the assumptions and a source; a test against an analytic or textbook
   value with a stated tolerance.
@@ -61,6 +63,8 @@ src/process_sim_lab/      library
                           command line (python3 -m process_sim_lab.flowsheet_json solve|check|schema)
   agent/                  agent layer: schemas.py (JSON Schema per tool + validator), runner.py (run_tool),
                           evaluate.py (python3 -m process_sim_lab.agent.evaluate)
+  mcp_server.py           MCP server over stdio around run_tool, the tool schemas as input schemas
+                          (python3 -m process_sim_lab.mcp_server; needs the optional extra `mcp`)
 evals/cases/              evaluation cases: tool call, expected values, tolerances, source test
 examples/                 flowsheets in JSON and their solved results (*.result.json)
 tests/                    unittest, one file per module
