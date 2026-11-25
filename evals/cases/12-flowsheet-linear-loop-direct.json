@@ -1,0 +1,109 @@
+{
+  "id": "flowsheet-linear-loop-direct",
+  "description": "Linear recycle loop (feed 10 mol/s A, CSTR with Da = 1, purge 1/5) solved by direct substitution instead of Wegstein.",
+  "source": "tests/test_flowsheet.py LinearLoopTest test_matches_closed_form and test_wegstein_needs_far_fewer_passes: a = (1 - p) / (1 + Da) = 0.4, R_A = a F_0 / (1 - a) = 20/3, M = F_0 / p = 50, R_B = (1 - p) M - R_A = 100/3 mol/s; purge = p (25/3, 125/3) = (5/3, 25/3) mol/s. Tolerance 1e-8 mol/s on A (the test's VALUE_TOL) and 1e-6 mol/s on B and the overall balance (the test's delta: the total moles converge at rate 0.8, so B lags A).",
+  "call": {
+    "name": "solve_flowsheet",
+    "arguments": {
+      "name": "linear-loop",
+      "feeds": {
+        "feed": {
+          "flows": {
+            "A": 10.0
+          }
+        }
+      },
+      "units": [
+        {
+          "name": "mixer",
+          "type": "mixer",
+          "inlets": [
+            "feed",
+            "recycle"
+          ],
+          "outlets": [
+            "s1"
+          ]
+        },
+        {
+          "name": "reactor",
+          "type": "cstr",
+          "inlets": [
+            "s1"
+          ],
+          "outlets": [
+            "s2"
+          ],
+          "params": {
+            "reactant": "A",
+            "product": "B",
+            "rate_constant": 0.01,
+            "volume": 2.0,
+            "volumetric_flow": 0.02
+          }
+        },
+        {
+          "name": "split",
+          "type": "splitter",
+          "inlets": [
+            "s2"
+          ],
+          "outlets": [
+            "purge",
+            "recycle"
+          ],
+          "params": {
+            "fractions": [
+              0.2,
+              0.8
+            ]
+          }
+        }
+      ],
+      "tear": {
+        "streams": [
+          "recycle"
+        ],
+        "method": "direct",
+        "tol": 1e-10,
+        "max_iter": 500
+      }
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/method",
+      "value": "direct"
+    },
+    {
+      "pointer": "/streams/recycle/flows/A",
+      "value": 6.666666666666667,
+      "abs_tol": 1e-08
+    },
+    {
+      "pointer": "/streams/recycle/flows/B",
+      "value": 33.333333333333336,
+      "abs_tol": 1e-06
+    },
+    {
+      "pointer": "/streams/purge/flows/A",
+      "value": 1.6666666666666667,
+      "abs_tol": 1e-08
+    },
+    {
+      "pointer": "/streams/purge/flows/B",
+      "value": 8.333333333333334,
+      "abs_tol": 1e-06
+    },
+    {
+      "pointer": "/overall_balance/A",
+      "value": 0.0,
+      "abs_tol": 1e-06
+    },
+    {
+      "pointer": "/overall_balance/B",
+      "value": 0.0,
+      "abs_tol": 1e-06
+    }
+  ]
+}

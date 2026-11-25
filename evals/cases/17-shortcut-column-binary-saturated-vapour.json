@@ -1,0 +1,53 @@
+{
+  "id": "shortcut-column-binary-saturated-vapour",
+  "description": "The same binary column with a saturated vapour feed (q = 0): the pinch moves and the minimum reflux rises.",
+  "source": "tests/test_shortcut_column.py BinaryClosedFormTest test_saturated_vapour_feed: the McCabe-Thiele pinch y* = 0.5, x* = 1/3 gives R_min = (0.99 - 0.5) / (0.5 - 1/3) = 2.94 and theta = 3/2; R = 1.5 * 2.94 = 4.41; N_min = 2 ln 99 / ln 2 = 13.2587 does not depend on q. Tolerance 1e-9 (the test's TOL).",
+  "call": {
+    "name": "shortcut_column",
+    "arguments": {
+      "feed": {
+        "flows": {
+          "A": 5.0,
+          "B": 5.0
+        }
+      },
+      "relative_volatilities": {
+        "A": 2.0,
+        "B": 1.0
+      },
+      "light_key": "A",
+      "heavy_key": "B",
+      "light_key_recovery": 0.99,
+      "heavy_key_recovery": 0.99,
+      "q": 0.0,
+      "reflux_factor": 1.5
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/minimum_stages",
+      "value": 13.258713240159219,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/theta",
+      "value": 1.5,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/minimum_reflux",
+      "value": 2.94,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/reflux_ratio",
+      "value": 4.41,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/distillate/flows/A",
+      "value": 4.95,
+      "abs_tol": 1e-09
+    }
+  ]
+}

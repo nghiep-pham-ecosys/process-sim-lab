@@ -189,13 +189,24 @@ assert bad["error"]["type"] == "invalid_input"
 #            "issues": [{"path": "$.overall_u", "message": "must be > 0, got -500.0"}]}}
 ```
 
-Eleven evaluation cases in [`evals/cases/`](evals/cases/) are fixed tool calls with expected results. The values and
-tolerances come from the hand-checked unit tests and the week-3 flowsheet; each case names its source. No LLM is
-called:
+Twenty-five evaluation cases in [`evals/cases/`](evals/cases/) are fixed tool calls with expected results. The values
+and tolerances come from the hand-checked unit tests, NIST data and a textbook example; each case names its source and
+tolerance. No LLM is called:
+
+| Cases | Cover |
+|---|---|
+| 01–09 | one call per unit tool: reactors, mixer, splitter, flash, exchanger area, Antoine |
+| 10, 12–15 | recycle: the week-3 flowsheet by Wegstein and by direct substitution, torn at the reactor outlet; a linear loop with purge 1/5 and 1/10 |
+| 11, 16–18 | distillation: the Wankat column (q = 0, R given); a binary column with q = 1 and q = 0 and `reflux_factor`, alone and as a flowsheet unit |
+| 10, 15, 18–20 | sizing outputs: reactor, flash drum (every field), column, cooler and heater |
+| 21–25 | error paths: `unknown_tool`, `invalid_input`, `model_error` (temperature cross, reflux given twice), `convergence_error` |
 
 ```bash
-python3 -m process_sim_lab.agent.evaluate      # PASS/FAIL per case, then "11/11 cases passed"; exit code 1 on a failure
+python3 -m process_sim_lab.agent.evaluate      # PASS/FAIL per case, then "25/25 cases passed"; exit code 1 on a failure
 ```
+
+An error-path case names the error it expects (`"expected_error": "invalid_input"`) and checks fields of the error
+instead of the result, so an agent's recovery from a bad call can be graded the same way.
 
 The default case folder is the repository's `evals/cases`, which an editable install (`pip install -e .`) finds. Pass
 `--cases DIR` otherwise.

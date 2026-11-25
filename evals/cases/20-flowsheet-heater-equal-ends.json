@@ -1,0 +1,65 @@
+{
+  "id": "flowsheet-heater-equal-ends",
+  "description": "Heat exchanger unit as a heater, 400 -> 450 K against oil 550 -> 500 K: equal terminal differences, so the LMTD is that difference.",
+  "source": "tests/test_flowsheet.py HeatExchangerUnitTest test_heater_hand_checked: Q = 850 * 50 = 42 500 W; dT1 = 550 - 450 = 100 K, dT2 = 500 - 400 = 100 K, LMTD = 100 K; A = 42 500 / (250 * 100) = 1.7 m2. Tolerance 1e-9 on the duty (9 places) and 1e-12 on the LMTD and area (the test checks them exactly and to 12 places).",
+  "call": {
+    "name": "solve_flowsheet",
+    "arguments": {
+      "name": "process-exchanger",
+      "feeds": {
+        "feed": {
+          "flows": {
+            "A": 4.0,
+            "W": 6.0
+          },
+          "temperature": 400.0,
+          "pressure": 300000.0
+        }
+      },
+      "units": [
+        {
+          "name": "hx",
+          "type": "heat_exchanger",
+          "inlets": [
+            "feed"
+          ],
+          "outlets": [
+            "out"
+          ],
+          "params": {
+            "temperature": 450.0,
+            "heat_capacities": {
+              "A": 100.0,
+              "W": 75.0
+            },
+            "overall_u": 250.0,
+            "utility_in": 550.0,
+            "utility_out": 500.0
+          }
+        }
+      ]
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/units/hx/sizing/duty",
+      "value": 42500.0,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/units/hx/sizing/lmtd",
+      "value": 100.0,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/units/hx/sizing/area",
+      "value": 1.7,
+      "abs_tol": 1e-12
+    },
+    {
+      "pointer": "/streams/out/temperature",
+      "value": 450.0,
+      "abs_tol": 1e-12
+    }
+  ]
+}

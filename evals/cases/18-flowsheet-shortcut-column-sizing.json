@@ -1,0 +1,86 @@
+{
+  "id": "flowsheet-shortcut-column-sizing",
+  "description": "The binary saturated-liquid column as a flowsheet unit with reflux_factor; its sizing outputs carry N_min, R_min and R.",
+  "source": "tests/test_flowsheet.py ShortcutColumnUnitTest test_matches_the_unit_model and test_reflux_factor (the unit's sizing equals the unit model, R = 1.5 R_min), with the values of tests/test_shortcut_column.py BinaryClosedFormTest test_saturated_liquid_feed: N_min = 2 ln 99 / ln 2 = 13.2587, R_min = 1.94, R = 2.91, distillate (4.95, 0.05) mol/s. Tolerance 1e-9 (the test's TOL and the unit test's balance delta).",
+  "call": {
+    "name": "solve_flowsheet",
+    "arguments": {
+      "name": "binary-column",
+      "feeds": {
+        "feed": {
+          "flows": {
+            "A": 5.0,
+            "B": 5.0
+          }
+        }
+      },
+      "units": [
+        {
+          "name": "column",
+          "type": "shortcut_column",
+          "inlets": [
+            "feed"
+          ],
+          "outlets": [
+            "distillate",
+            "bottoms"
+          ],
+          "params": {
+            "relative_volatilities": {
+              "A": 2.0,
+              "B": 1.0
+            },
+            "light_key": "A",
+            "heavy_key": "B",
+            "light_key_recovery": 0.99,
+            "heavy_key_recovery": 0.99,
+            "q": 1.0,
+            "reflux_factor": 1.5
+          }
+        }
+      ]
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/units/column/sizing/minimum_stages",
+      "value": 13.258713240159219,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/units/column/sizing/minimum_reflux",
+      "value": 1.94,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/units/column/sizing/reflux_ratio",
+      "value": 2.91,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/streams/distillate/flows/A",
+      "value": 4.95,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/streams/distillate/flows/B",
+      "value": 0.05,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/streams/bottoms/flows/B",
+      "value": 4.95,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/overall_balance/A",
+      "value": 0.0,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/overall_balance/B",
+      "value": 0.0,
+      "abs_tol": 1e-09
+    }
+  ]
+}

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from process_sim_lab.agent.evaluate import (
     DEFAULT_CASES,
+    ERROR_TYPES,
     evaluate,
     load_cases,
     main,
@@ -192,13 +193,27 @@ class EvaluationCaseTest(unittest.TestCase):
     def setUpClass(cls):
         cls.cases = load_cases(DEFAULT_CASES)
 
-    def test_eleven_cases_one_per_file(self):
+    def test_twenty_five_cases_one_per_file(self):
         self.assertEqual(DEFAULT_CASES, REPO / "evals" / "cases")
-        self.assertEqual(len(self.cases), 11)
-        self.assertEqual(len(list(DEFAULT_CASES.glob("*.json"))), 11)
+        self.assertEqual(len(self.cases), 25)
+        self.assertEqual(len(list(DEFAULT_CASES.glob("*.json"))), 25)
 
     def test_every_operation_is_covered(self):
-        self.assertEqual({c.tool for c in self.cases}, set(TOOL_SCHEMAS))
+        self.assertEqual({c.tool for c in self.cases if c.expected_error is None}, set(TOOL_SCHEMAS))
+
+    def test_every_error_type_is_covered(self):
+        self.assertEqual({c.expected_error for c in self.cases if c.expected_error}, set(ERROR_TYPES))
+
+    def test_recycle_distillation_and_sizing_are_covered(self):
+        flowsheets = [c.arguments for c in self.cases if c.tool == "solve_flowsheet" and c.expected_error is None]
+        tears = [f["tear"] for f in flowsheets if "tear" in f]
+        self.assertEqual({t.get("method", "wegstein") for t in tears}, {"direct", "wegstein"})
+        self.assertGreater(len({tuple(t["streams"]) for t in tears}), 1)
+        columns = [c.arguments for c in self.cases if c.tool == "shortcut_column" and c.expected_error is None]
+        self.assertEqual({a["q"] for a in columns}, {0.0, 1.0})
+        self.assertTrue(any("reflux_factor" in a for a in columns))
+        unit_types = {u["type"] for f in flowsheets for u in f["units"]}
+        self.assertLessEqual({"cstr", "flash", "heat_exchanger", "shortcut_column"}, unit_types)
 
     def test_every_case_names_its_source_test(self):
         for c in self.cases:
@@ -206,27 +221,32 @@ class EvaluationCaseTest(unittest.TestCase):
                 self.assertRegex(c.source, r"tests/test_\w+\.py")
                 self.assertIn("Tolerance", c.source)
 
-    def test_every_case_arguments_validate(self):
+    def test_every_case_call_succeeds_or_fails_as_expected(self):
         for c in self.cases:
             with self.subTest(case=c.id):
-                self.assertTrue(run_tool(c.tool, c.arguments)["ok"])
+                out = run_tool(c.tool, c.arguments)
+                if c.expected_error is None:
+                    self.assertTrue(out["ok"], out)
+                else:
+                    self.assertEqual(out["error"]["type"], c.expected_error)
 
     def test_flowsheet_case_uses_the_week_3_example(self):
-        (case,) = [c for c in self.cases if c.tool == "solve_flowsheet"]
+        (case,) = [c for c in self.cases if c.id == "flowsheet-reactor-flash-recycle"]
         self.assertEqual(case.arguments, json.loads(EXAMPLE.read_text(encoding="utf-8")))
 
     def test_all_cases_pass(self):
         results = evaluate(self.cases)
         self.assertEqual([r.failures for r in results if not r.passed], [])
 
-    def test_main_reports_eleven_of_eleven(self):
+    def test_main_reports_twenty_five_of_twenty_five(self):
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             code = main([])
         self.assertEqual(code, 0)
         lines = buffer.getvalue().splitlines()
-        self.assertEqual(lines[-1], "11/11 cases passed")
-        self.assertEqual(sum(line.startswith("PASS") for line in lines), 11)
+        self.assertEqual(lines[-1], "25/25 cases passed")
+        self.assertEqual(sum(line.startswith("PASS") for line in lines), 25)
+        self.assertIn("PASS  error-invalid-input  (cstr, expects invalid_input, 5 checks)", lines)
 
 
 class EvaluateMechanicsTest(unittest.TestCase):
@@ -258,6 +278,33 @@ class EvaluateMechanicsTest(unittest.TestCase):
         r = run_case(self.case(call={"name": "flash_drum", "arguments": example("flash_drum")},
                                expected=[{"pointer": "/phase", "value": "liquid"}]))
         self.assertEqual(r.failures, ("/phase: expected 'liquid', got 'two-phase'",))
+
+    def error_case(self, expected_error="invalid_input", **changes):
+        args = example("cstr")
+        args["volume"] = -2.0
+        changes.setdefault("expected", [{"pointer": "/issues/0/path", "value": "$.volume"}])
+        return self.case(call={"name": "cstr", "arguments": args}, expected_error=expected_error, **changes)
+
+    def test_an_expected_error_passes_and_is_checked_in_the_error(self):
+        r = run_case(self.error_case())
+        self.assertTrue(r.passed, r.failures)
+        r = run_case(self.error_case(expected=[{"pointer": "/issues/0/path", "value": "$.rate_constant"},
+                                               {"pointer": "/conversion", "value": 0.5, "abs_tol": 1e-12}]))
+        self.assertEqual(r.failures, ("/issues/0/path: expected '$.rate_constant', got '$.volume'",
+                                      "/conversion: not in the error"))
+
+    def test_an_error_of_another_type_fails(self):
+        r = run_case(self.error_case("model_error"))
+        self.assertFalse(r.passed)
+        self.assertIn("expected a model_error error, got invalid_input", r.failures[0])
+
+    def test_a_success_where_an_error_is_expected_fails(self):
+        r = run_case(self.case(expected_error="model_error"))
+        self.assertEqual(r.failures, ("expected a model_error error, the tool call succeeded",))
+
+    def test_unknown_error_type_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.case(expected_error="timeout")
 
     def test_a_folder_without_cases_is_rejected(self):
         with self.assertRaises(ValueError):

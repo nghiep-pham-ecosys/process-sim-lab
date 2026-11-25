@@ -1,0 +1,63 @@
+{
+  "id": "shortcut-column-binary-saturated-liquid",
+  "description": "FUG shortcut column, binary with alpha = 2, saturated liquid feed (q = 1), 99 % recovery of each key, reflux given as 1.5 R_min.",
+  "source": "tests/test_shortcut_column.py BinaryClosedFormTest test_saturated_liquid_feed: Fenske N_min = 2 ln 99 / ln 2 = 13.2587; the McCabe-Thiele pinch on the q-line x* = 0.5, y* = 2/3 gives R_min = (0.99 - 2/3) / (1/6) = 1.94 and theta = 4/3; R = 1.5 * 1.94 = 2.91; distillate (4.95, 0.05) mol/s. Tolerance 1e-9 (the test's TOL).",
+  "call": {
+    "name": "shortcut_column",
+    "arguments": {
+      "feed": {
+        "flows": {
+          "A": 5.0,
+          "B": 5.0
+        }
+      },
+      "relative_volatilities": {
+        "A": 2.0,
+        "B": 1.0
+      },
+      "light_key": "A",
+      "heavy_key": "B",
+      "light_key_recovery": 0.99,
+      "heavy_key_recovery": 0.99,
+      "q": 1.0,
+      "reflux_factor": 1.5
+    }
+  },
+  "expected": [
+    {
+      "pointer": "/minimum_stages",
+      "value": 13.258713240159219,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/theta",
+      "value": 1.3333333333333333,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/minimum_reflux",
+      "value": 1.94,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/reflux_ratio",
+      "value": 2.91,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/distillate/flows/A",
+      "value": 4.95,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/distillate/flows/B",
+      "value": 0.05,
+      "abs_tol": 1e-09
+    },
+    {
+      "pointer": "/bottoms/flows/B",
+      "value": 4.95,
+      "abs_tol": 1e-09
+    }
+  ]
+}
