@@ -159,6 +159,26 @@ class StructuredErrorTest(unittest.TestCase):
         out = run_tool("solve_flowsheet", args)
         self.assertEqual(out["error"]["type"], MODEL_ERROR)
 
+        args = example("shortcut_column")
+        args["reflux_factor"] = 1.3  # reflux_ratio is given too
+        out = run_tool("shortcut_column", args)
+        self.assertEqual(out["error"]["type"], MODEL_ERROR)
+        self.assertIn("exactly one", out["error"]["message"])
+
+        del args["reflux_ratio"]
+        args["reflux_factor"] = 1.00001  # Gilliland needs infinitely many stages at this resolution
+        out = run_tool("shortcut_column", args)
+        self.assertEqual(out["error"]["type"], MODEL_ERROR)
+        self.assertIn("too close to R_min", out["error"]["message"])
+
+    def test_shortcut_column_result(self):
+        # tests/test_shortcut_column.py: Wankat Examples 7-1 and 7-2, N_min = ln(931) / ln(1 / 0.21).
+        r = run_tool("shortcut_column", example("shortcut_column"))["result"]
+        self.assertAlmostEqual(r["minimum_stages"], 4.3804, delta=5e-5)
+        self.assertAlmostEqual(r["minimum_reflux"], 0.6663, delta=0.00067)
+        self.assertAlmostEqual(r["distillate"]["flows"]["toluene"], 28.5, delta=1e-9)
+        self.assertGreater(r["stages"], r["minimum_stages"])
+
     def test_convergence_error(self):
         out = run_tool("solve_flowsheet", linear_loop(method="direct", max_iter=2))
         self.assertEqual(out["error"]["type"], CONVERGENCE_ERROR)
@@ -172,10 +192,10 @@ class EvaluationCaseTest(unittest.TestCase):
     def setUpClass(cls):
         cls.cases = load_cases(DEFAULT_CASES)
 
-    def test_ten_cases_one_per_file(self):
+    def test_eleven_cases_one_per_file(self):
         self.assertEqual(DEFAULT_CASES, REPO / "evals" / "cases")
-        self.assertEqual(len(self.cases), 10)
-        self.assertEqual(len(list(DEFAULT_CASES.glob("*.json"))), 10)
+        self.assertEqual(len(self.cases), 11)
+        self.assertEqual(len(list(DEFAULT_CASES.glob("*.json"))), 11)
 
     def test_every_operation_is_covered(self):
         self.assertEqual({c.tool for c in self.cases}, set(TOOL_SCHEMAS))
@@ -199,14 +219,14 @@ class EvaluationCaseTest(unittest.TestCase):
         results = evaluate(self.cases)
         self.assertEqual([r.failures for r in results if not r.passed], [])
 
-    def test_main_reports_ten_of_ten(self):
+    def test_main_reports_eleven_of_eleven(self):
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             code = main([])
         self.assertEqual(code, 0)
         lines = buffer.getvalue().splitlines()
-        self.assertEqual(lines[-1], "10/10 cases passed")
-        self.assertEqual(sum(line.startswith("PASS") for line in lines), 10)
+        self.assertEqual(lines[-1], "11/11 cases passed")
+        self.assertEqual(sum(line.startswith("PASS") for line in lines), 11)
 
 
 class EvaluateMechanicsTest(unittest.TestCase):
