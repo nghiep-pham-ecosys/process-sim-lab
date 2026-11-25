@@ -36,7 +36,9 @@ Out of scope for the first 4 weeks:
 
 - Python 3.12. Core library: standard library only. `numpy`/`scipy` may come later, one PR each, with a reason.
 - Optional extras stay outside the core: `mcp` (the official MCP Python SDK, MIT) is needed only by
-  `mcp_server.py`, and its tests are skipped without it.
+  `mcp_server.py`, `demo` (Gradio, Apache-2.0) only by `demo.py`, and `docs` (MkDocs, BSD-2-Clause) only by the docs
+  site build. Tests that need an extra are skipped without it.
+- The demo runs locally only (127.0.0.1, no share link). Hosting it anywhere is a separate decision.
 - SI units inside the library. Conversions only at the edges.
 - Each model: a docstring with the equations, the assumptions and a source; a test against an analytic or textbook
   value with a stated tolerance.
@@ -49,7 +51,7 @@ Out of scope for the first 4 weeks:
 | 1 | Repo, spec, package skeleton, CI; `Stream` and an isothermal CSTR (first-order A → B) | CI green; CSTR matches the analytic conversion X = kτ / (1 + kτ) |
 | 2 | Unit library: PFR, mixer, splitter, flash drum (Rachford–Rice), heat exchanger (LMTD); Antoine data with sources | each unit has a test against a hand-checked case |
 | 3 | Flowsheet: connect units, solve in sequence, one recycle loop (successive substitution, then Wegstein); sizing outputs exported as JSON | a reactor–separator–recycle example converges and its JSON validates against a schema |
-| 4 | Agent layer: JSON schemas for every operation, a tool runner, 10 evaluation cases with expected results; a worked example in the README | the runner passes all 10 cases; an agent session that builds the week-3 flowsheet is recorded in `docs/` |
+| 4 | Agent layer: JSON schemas for every operation, a tool runner, 25 evaluation cases with expected results; a worked example in the README | the runner passes all 25 cases; an agent session that builds the week-3 flowsheet is recorded in `docs/` |
 
 ## 5. Layout
 
@@ -65,11 +67,19 @@ src/process_sim_lab/      library
                           evaluate.py (python3 -m process_sim_lab.agent.evaluate)
   mcp_server.py           MCP server over stdio around run_tool, the tool schemas as input schemas
                           (python3 -m process_sim_lab.mcp_server; needs the optional extra `mcp`)
+  demo.py                 local web demo of the week-3 flowsheet: solve_week3 (standard library) and a Gradio form
+                          (python3 -m process_sim_lab.demo; needs the optional extra `demo`)
 evals/cases/              evaluation cases: tool call, expected values, tolerances, source test
 examples/                 flowsheets in JSON and their solved results (*.result.json)
-tests/                    unittest, one file per module
-docs/spec.md              this file
-docs/flowsheet-worked-example.md   the week-3 example by hand and with the library: solve, size, check the JSON
+tests/                    unittest, one file per module; test_docs.py checks the docs site
+docs/                     the docs site (MkDocs), one page per unit:
+  index.md                home page and page list
+  units/                  cstr, pfr, mixer, splitter, flash (drum and its sizing), heat_exchanger, shortcut_column
+  antoine.md, flowsheet.md, agent.md, demo.md   Antoine data, the flowsheet solver, agent layer and MCP, the demo
+  spec.md                 this file
+  flowsheet-worked-example.md   the week-3 example by hand and with the library: solve, size, check the JSON
+mkdocs.yml                site config and nav; mkdocs_hooks.py points links that leave docs/ to the file on GitHub
+.github/workflows/        ci.yml (tests, gitleaks), pr-title.yml, pages.yml (mkdocs build --strict, deploy to Pages)
 ```
 
 ## 6. How work is checked

@@ -14,9 +14,14 @@ dependencies = []
 [project.optional-dependencies]
 # The MCP server (process_sim_lab.mcp_server). Official MCP Python SDK, MIT licence; the 2.x API is used.
 mcp = ["mcp>=2.3,<3"]
+# The local web demo (process_sim_lab.demo). Gradio, Apache-2.0 licence; the 6.x API is used.
+demo = ["gradio>=6,<7"]
+# The docs site (mkdocs.yml, built in .github/workflows/pages.yml). MkDocs, BSD-2-Clause licence, built-in theme.
+docs = ["mkdocs>=1.6,<2"]
 
 [project.scripts]
 process-sim-lab-mcp = "process_sim_lab.mcp_server:main"
+process-sim-lab-demo = "process_sim_lab.demo:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

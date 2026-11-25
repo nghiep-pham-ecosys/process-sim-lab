@@ -1,0 +1,35 @@
+# Docs site of process-sim-lab, built by .github/workflows/pages.yml with `mkdocs build --strict`.
+# Local preview: python3 -m pip install -e '.[docs]' && mkdocs serve   (http://127.0.0.1:8000)
+site_name: process-sim-lab
+site_description: Chemical process and equipment simulation, built step by step with agentic AI in mind
+site_url: https://nghiep-pham-ecosys.github.io/process-sim-lab/
+repo_url: https://github.com/nghiep-pham-ecosys/process-sim-lab
+edit_uri: blob/main/docs/
+docs_dir: docs
+strict: true
+theme:
+  name: readthedocs
+  navigation_depth: 2
+hooks:
+  - mkdocs_hooks.py
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+nav:
+  - Home: index.md
+  - Units:
+      - CSTR: units/cstr.md
+      - PFR: units/pfr.md
+      - Mixer: units/mixer.md
+      - Splitter: units/splitter.md
+      - Flash drum and its sizing: units/flash.md
+      - Heat exchanger: units/heat_exchanger.md
+      - Shortcut column: units/shortcut_column.md
+  - Antoine vapour pressure: antoine.md
+  - Flowsheet: flowsheet.md
+  - Flowsheet worked example: flowsheet-worked-example.md
+  - Agent layer and MCP: agent.md
+  - Local demo: demo.md
+  - Spec: spec.md
