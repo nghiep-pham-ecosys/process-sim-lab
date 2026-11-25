@@ -556,13 +556,14 @@ class FlowsheetResult:
         }
 
     def to_dict(self) -> dict[str, Any]:
-        """Plain JSON-ready form of the result."""
+        """Plain JSON-ready form of the result; ``process_sim_lab.flowsheet_json.RESULT_SCHEMA`` describes it."""
         return {
             "name": self.name,
             "method": self.method,
             "iterations": self.iterations,
             "residual": self.residual,
             "tol": self.tol,
+            "history": list(self.history),
             "feeds": list(self.feeds),
             "products": list(self.products),
             "components": list(self.components),
@@ -579,6 +580,7 @@ class FlowsheetResult:
                 }
                 for name, u in self.units.items()
             },
+            "overall_balance": self.overall_balance(),
         }
 
 
