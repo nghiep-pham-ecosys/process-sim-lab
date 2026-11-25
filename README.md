@@ -203,6 +203,42 @@ The default case folder is the repository's `evals/cases`, which an editable ins
 After week 4: a shortcut distillation column (Fenske, Underwood, Gilliland) as the tool `shortcut_column`, checked
 against a textbook example (Wankat, Separation Process Engineering, Examples 7-1 and 7-2).
 
+## Use from an MCP client
+
+An MCP server wraps the same runner, so any MCP client (Claude Code, Claude Desktop, another agent) can list and
+call every tool above. Each tool's input schema is the schema from `schemas.py`, unchanged. The server needs the
+official MCP Python SDK (MIT licence), an optional extra; the library itself stays standard library only:
+
+```bash
+python3 -m pip install -e '.[mcp]'
+python3 -m process_sim_lab.mcp_server --help      # the server speaks MCP over stdio; a client starts it
+```
+
+Claude Code, from the repository root (use the Python of the environment you installed into):
+
+```bash
+claude mcp add process-sim-lab -- "$(command -v python3)" -m process_sim_lab.mcp_server
+```
+
+Claude Desktop (`claude_desktop_config.json`), or a project `.mcp.json`, with the absolute path of that Python:
+
+```json
+{
+  "mcpServers": {
+    "process-sim-lab": {
+      "command": "/absolute/path/to/.venv/bin/python",
+      "args": ["-m", "process_sim_lab.mcp_server"]
+    }
+  }
+}
+```
+
+The install also adds a console script, `process-sim-lab-mcp`, which can be the `command` instead. A tool call
+returns the runner's JSON twice: as `structuredContent` and as one text block. A bad call sets `isError` and carries
+the runner's error (`invalid_input`, `model_error`, `convergence_error`), so the model can correct it; an unknown tool
+name is a JSON-RPC error (-32602) that lists the known tools. `tests/test_mcp_server.py` connects a client through the
+SDK, in process and over stdio, and builds the week-3 flowsheet with `solve_flowsheet`.
+
 ## Run the tests
 
 Python 3.12, no third-party packages.
@@ -211,6 +247,8 @@ Python 3.12, no third-party packages.
 python3 -m pip install -e .
 python3 -m unittest discover -v -s tests -p 'test_*.py'
 ```
+
+The MCP client tests are skipped unless the `mcp` extra is installed (`python3 -m pip install -e '.[mcp]'`).
 
 ## License
 

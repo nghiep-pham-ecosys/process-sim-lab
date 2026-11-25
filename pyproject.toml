@@ -11,5 +11,12 @@ license = { text = "MIT" }
 requires-python = ">=3.12"
 dependencies = []
 
+[project.optional-dependencies]
+# The MCP server (process_sim_lab.mcp_server). Official MCP Python SDK, MIT licence; the 2.x API is used.
+mcp = ["mcp>=2.3,<3"]
+
+[project.scripts]
+process-sim-lab-mcp = "process_sim_lab.mcp_server:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
