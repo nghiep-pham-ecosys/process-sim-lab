@@ -250,6 +250,32 @@ the runner's error (`invalid_input`, `model_error`, `convergence_error`), so the
 name is a JSON-RPC error (-32602) that lists the known tools. `tests/test_mcp_server.py` connects a client through the
 SDK, in process and over stdio, and builds the week-3 flowsheet with `solve_flowsheet`.
 
+## Try it without code
+
+A local web demo solves the week-3 flowsheet from a form: change the feed, the kinetics, the K-values, the drum sizing
+data, the purge fraction or the tear update rule, and read the streams, the sizing and the convergence. It needs
+Gradio (Apache-2.0), an optional extra, and runs on your machine only (127.0.0.1, no share link, analytics off):
+
+```bash
+python3 -m pip install -e '.[demo]'
+python3 -m process_sim_lab.demo            # open http://127.0.0.1:7860 ; stop with Ctrl+C
+```
+
+`process_sim_lab.demo.solve_week3(...)` is the function behind the form; it needs no Gradio.
+
+## Docs site
+
+One page per unit (equations, assumptions, a runnable example, the flowsheet params and the agent tool, the source),
+plus Antoine, the flowsheet, the agent layer and the demo:
+[nghiep-pham-ecosys.github.io/process-sim-lab](https://nghiep-pham-ecosys.github.io/process-sim-lab/). It is built
+from [`docs/`](docs/) and [`mkdocs.yml`](mkdocs.yml) by `.github/workflows/pages.yml` (`mkdocs build --strict`).
+Locally, with the optional extra `docs` (MkDocs, BSD-2-Clause):
+
+```bash
+python3 -m pip install -e '.[docs]'
+mkdocs serve                               # http://127.0.0.1:8000
+```
+
 ## Run the tests
 
 Python 3.12, no third-party packages.
@@ -259,7 +285,8 @@ python3 -m pip install -e .
 python3 -m unittest discover -v -s tests -p 'test_*.py'
 ```
 
-The MCP client tests are skipped unless the `mcp` extra is installed (`python3 -m pip install -e '.[mcp]'`).
+The MCP client tests are skipped unless the `mcp` extra is installed (`python3 -m pip install -e '.[mcp]'`); the
+Gradio interface tests need the `demo` extra and the strict site build test needs the `docs` extra.
 
 ## License
 
