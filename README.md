@@ -70,6 +70,7 @@ Week 4: every operation is a tool with a JSON schema, so an agent can call the l
 | `cstr`, `pfr` | isothermal first-order reactor A → B |
 | `mixer`, `splitter` | mix streams; split one stream by fraction |
 | `flash_drum` | isothermal flash with given K-values (Rachford–Rice) |
+| `shortcut_column` | distillation column by Fenske–Underwood–Gilliland: minimum stages, minimum reflux, actual stages |
 | `heat_exchanger_area` | counter-current exchanger area from the duty and the LMTD |
 | `antoine_vapour_pressure`, `antoine_saturation_temperature` | pure-component Antoine equation (NIST constants) |
 | `solve_flowsheet` | a flowsheet in the week-3 JSON form, recycle included |
@@ -101,16 +102,19 @@ run_tool("heat_exchanger_area", {..., "overall_u": -500.0})
 #            "issues": [{"path": "$.overall_u", "message": "must be > 0, got -500.0"}]}}
 ```
 
-Ten evaluation cases in [`evals/cases/`](evals/cases/) are fixed tool calls with expected results. The values and
+Eleven evaluation cases in [`evals/cases/`](evals/cases/) are fixed tool calls with expected results. The values and
 tolerances come from the hand-checked unit tests and the week-3 flowsheet; each case names its source. No LLM is
 called:
 
 ```bash
-python3 -m process_sim_lab.agent.evaluate      # PASS/FAIL per case, then "10/10 cases passed"; exit code 1 on a failure
+python3 -m process_sim_lab.agent.evaluate      # PASS/FAIL per case, then "11/11 cases passed"; exit code 1 on a failure
 ```
 
 The default case folder is the repository's `evals/cases`, which an editable install (`pip install -e .`) finds. Pass
 `--cases DIR` otherwise.
+
+After week 4: a shortcut distillation column (Fenske, Underwood, Gilliland) as the tool `shortcut_column`, checked
+against a textbook example (Wankat, Separation Process Engineering, Examples 7-1 and 7-2).
 
 ## Run the tests
 

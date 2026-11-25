@@ -21,3 +21,7 @@ from process_sim_lab.units.heat_exchanger import (  # noqa: E402
 )
 
 __all__ += ["HeatExchangerResult", "counter_current_area", "log_mean_temperature_difference"]
+
+from process_sim_lab.units.shortcut_column import ShortcutColumnResult, shortcut_column  # noqa: E402
+
+__all__ += ["ShortcutColumnResult", "shortcut_column"]

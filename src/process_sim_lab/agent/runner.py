@@ -38,6 +38,7 @@ from process_sim_lab.units import (
     isothermal_flash,
     isothermal_pfr_first_order,
     mix_streams,
+    shortcut_column,
     split_stream,
 )
 
@@ -99,6 +100,31 @@ def _flash_drum(a: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shortcut_column(a: Mapping[str, Any]) -> dict[str, Any]:
+    options = {k: a[k] for k in ("q", "reflux_ratio", "reflux_factor") if k in a}
+    r = shortcut_column(
+        _stream_in(a["feed"]),
+        relative_volatilities=dict(a["relative_volatilities"]),
+        light_key=a["light_key"],
+        heavy_key=a["heavy_key"],
+        light_key_recovery=a["light_key_recovery"],
+        heavy_key_recovery=a["heavy_key_recovery"],
+        **options,
+    )
+    return {
+        "distillate": _stream_out(r.distillate),
+        "bottoms": _stream_out(r.bottoms),
+        "distillate_fraction": r.distillate_fraction,
+        "minimum_stages": r.minimum_stages,
+        "theta": r.theta,
+        "minimum_reflux": r.minimum_reflux,
+        "reflux_ratio": r.reflux_ratio,
+        "gilliland_x": r.gilliland_x,
+        "gilliland_y": r.gilliland_y,
+        "stages": r.stages,
+    }
+
+
 def _heat_exchanger_area(a: Mapping[str, Any]) -> dict[str, Any]:
     r = counter_current_area(
         duty=a["duty"],
@@ -131,6 +157,7 @@ OPERATIONS: dict[str, Callable[[Mapping[str, Any]], dict[str, Any]]] = {
     "mixer": _mixer,
     "splitter": _splitter,
     "flash_drum": _flash_drum,
+    "shortcut_column": _shortcut_column,
     "heat_exchanger_area": _heat_exchanger_area,
     "antoine_vapour_pressure": _antoine_vapour_pressure,
     "antoine_saturation_temperature": _antoine_saturation_temperature,

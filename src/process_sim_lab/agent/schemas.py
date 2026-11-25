@@ -387,6 +387,43 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         {"feed": {"flows": {"A": 2.0, "B": 3.0, "C": 5.0}, "temperature": 320.0, "pressure": 300000.0},
          "k_values": {"A": 5.0, "B": 1.0, "C": 0.3333333333333333}},
     ),
+    "shortcut_column": _tool(
+        "Shortcut distillation column (Fenske-Underwood-Gilliland)",
+        "Design a column with a total condenser and a partial reboiler by the FUG shortcut method, with constant "
+        "relative volatilities: Fenske minimum stages and non-key split at total reflux, Underwood minimum reflux "
+        "(adjacent keys only), Gilliland actual stages (Molokanov equation). Give reflux_ratio or reflux_factor, not "
+        "both. Stage counts include the partial reboiler and are not rounded. The products carry the feed temperature "
+        "and pressure; the method does not compute them.",
+        {
+            "feed": _stream("inlet stream, total flow > 0; must contain both keys"),
+            "relative_volatilities": {
+                "type": "object",
+                "description": "relative volatility alpha_i against any one reference component, dimensionless, "
+                "keyed by component name; one for every component with a positive flow",
+                "additionalProperties": _number("relative volatility of one component, dimensionless, > 0",
+                                                exclusiveMinimum=0),
+            },
+            "light_key": _component("component name of the light key; more volatile than the heavy key"),
+            "heavy_key": _component("component name of the heavy key; no component may lie between the keys"),
+            "light_key_recovery": _number("fraction of the light key to the distillate, dimensionless, in (0, 1)",
+                                          exclusiveMinimum=0, maximum=1),
+            "heavy_key_recovery": _number("fraction of the heavy key to the bottoms, dimensionless, in (0, 1); the "
+                                          "two recoveries sum to more than 1", exclusiveMinimum=0, maximum=1),
+            "q": _number("feed condition, liquid fraction added below the feed stage, dimensionless; 1 saturated "
+                         "liquid (default), 0 saturated vapour"),
+            "reflux_ratio": _number("operating reflux ratio R = L / D, dimensionless, > R_min",
+                                    exclusiveMinimum=0),
+            "reflux_factor": _number("operating R / R_min, dimensionless, > 1", exclusiveMinimum=1),
+        },
+        ["feed", "relative_volatilities", "light_key", "heavy_key", "light_key_recovery", "heavy_key_recovery"],
+        # tests/test_shortcut_column.py: P. C. Wankat, Separation Process Engineering, 5th ed., Examples 7-1 and 7-2;
+        # R = 2.0 is an operating choice, not a printed spec.
+        {"feed": {"flows": {"benzene": 40.0, "toluene": 30.0, "cumene": 30.0}, "temperature": 360.0,
+                  "pressure": 101325.0},
+         "relative_volatilities": {"benzene": 2.25, "toluene": 1.0, "cumene": 0.21},
+         "light_key": "toluene", "heavy_key": "cumene", "light_key_recovery": 0.95, "heavy_key_recovery": 0.98,
+         "q": 0.0, "reflux_ratio": 2.0},
+    ),
     "heat_exchanger_area": _tool(
         "Counter-current heat exchanger area (LMTD)",
         "Area of a counter-current heat exchanger from its duty and terminal temperatures, A = Q / (U * LMTD), with "

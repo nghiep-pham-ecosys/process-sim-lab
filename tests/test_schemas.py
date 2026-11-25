@@ -28,6 +28,7 @@ OPERATIONS = {
     "mixer",
     "splitter",
     "flash_drum",
+    "shortcut_column",
     "heat_exchanger_area",
     "antoine_vapour_pressure",
     "antoine_saturation_temperature",
