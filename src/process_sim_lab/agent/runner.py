@@ -122,8 +122,7 @@ def _antoine_saturation_temperature(a: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _solve_flowsheet(a: Mapping[str, Any]) -> dict[str, Any]:
-    r = solve_flowsheet(a)
-    return {**r.to_dict(), "history": list(r.history), "overall_balance": r.overall_balance()}
+    return solve_flowsheet(a).to_dict()
 
 
 OPERATIONS: dict[str, Callable[[Mapping[str, Any]], dict[str, Any]]] = {

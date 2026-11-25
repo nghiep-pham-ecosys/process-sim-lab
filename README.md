@@ -47,6 +47,20 @@ A tear stream without an `initial` guess starts at zero flow. Tearing `recycle` 
 of the flash (`reactor-in` or `reactor-out` in the example) needs an `initial` guess in `tear`, or the first pass
 fails because the flash gets an empty feed.
 
+The result is written as one JSON object, and `RESULT_SCHEMA` in
+[`src/process_sim_lab/flowsheet_json.py`](src/process_sim_lab/flowsheet_json.py) (JSON Schema draft 2020-12)
+describes it. The example's output is committed as
+[`examples/reactor_flash_recycle.result.json`](examples/reactor_flash_recycle.result.json):
+
+```bash
+python3 -m process_sim_lab.flowsheet_json solve examples/reactor_flash_recycle.json -o result.json
+python3 -m process_sim_lab.flowsheet_json check result.json      # result.json: valid
+python3 -m process_sim_lab.flowsheet_json schema                 # prints RESULT_SCHEMA
+```
+
+The hand derivation, the direct-substitution and Wegstein runs side by side, and the schema check are in
+[`docs/flowsheet-worked-example.md`](docs/flowsheet-worked-example.md).
+
 ## Agent layer
 
 Week 4: every operation is a tool with a JSON schema, so an agent can call the library through tool calls.
